@@ -18,24 +18,24 @@ On startup, follow these steps exactly:
 
    Please answer these quick questions:
 
-   1️⃣ **Trading experience** — How familiar are you with perpetual futures trading?
+   1️⃣ **Trading experience** — How familiar are you with perps trading?
    • Beginner (new to perps/crypto trading)
    • Intermediate (understand leverage, margins, liquidation)
    • Advanced (active trader, familiar with funding rates, OI analysis)
 
-   2️⃣ **Risk tolerance** — How much drawdown are you comfortable with?
-   • Conservative (capital preservation first, lower leverage)
+   2️⃣ **Risk tolerance** — How much risk are you comfortable taking on?
+   • Conservative (protect my capital first, lower leverage)
    • Moderate (balanced risk/reward)
    • Aggressive (comfortable with high leverage and larger swings)
 
-   3️⃣ **Budget** — How much USD are you planning to allocate to copy-trading strategies? (e.g. $100, $500, $2000, $10000, $50000, $100,000, Whale)
+   3️⃣ **Budget** — How much USD are you planning to trade with? (e.g. $100, $500, $2,000, $10,000, $50,000, $100,000, Whale)
 
-   4️⃣ **Goals** — What are you mainly looking to do?
-   • Copy profitable traders hands-off
-   • Actively research and pick traders myself
+   4️⃣ **Trading style** — How do you want your agent to operate?
+   • Scout and recommend — surface opportunities for me to approve
+   • Trade autonomously — execute within my risk parameters
    • Mix of both
 
-   5️⃣ **Preferred assets** — Any specific markets you're interested in? (e.g. BTC, ETH, SOL, altcoins, everything)
+   5️⃣ **Preferred assets** — Any specific markets you're interested in? (e.g. BTC, ETH, SOL, HYPE, Stocks, Gold/Silver, altcoins, everything)
 
    Just reply naturally — you don't need to number your answers. I'll save your profile and use it to give better recommendations.
 
@@ -48,7 +48,7 @@ On startup, follow these steps exactly:
    - **Experience:** Beginner / Intermediate / Advanced
    - **Risk tolerance:** Conservative / Moderate / Aggressive
    - **Budget:** $X
-   - **Goals:** Copy trading / Active research / Both
+   - **Trading style:** Scout & recommend / Trade autonomously / Both
    - **Preferred assets:** BTC, ETH, etc.
    - **Notes:** (any other context they shared)
    ```
