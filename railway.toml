@@ -1,0 +1,17 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/setup/healthz"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+
+[variables]
+PORT = "8080"
+OPENCLAW_STATE_DIR = "/data/.openclaw"
+OPENCLAW_WORKSPACE_DIR = "/data/workspace"
+AI_PROVIDER = ""
+AI_API_KEY = ""
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_USER_ID = ""
+SENPI_AUTH_TOKEN = ""
