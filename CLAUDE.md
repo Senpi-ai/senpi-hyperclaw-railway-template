@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Railway deployment wrapper for **Openclaw** (an AI coding assistant platform). It provides:
 
-- A web-based setup wizard at `/setup` (protected by `SETUP_PASSWORD`)
-- Automatic reverse proxy from public URL → internal Openclaw gateway
+- A web-based setup wizard at `/setup` (protected by `SETUP_PASSWORD` when set)
+- Automatic reverse proxy from public URL → internal Openclaw gateway (requires `SETUP_PASSWORD` when set)
 - Persistent state via Railway Volume at `/data`
 - One-click backup export of configuration and workspace
 
@@ -53,12 +53,24 @@ open http://localhost:8080/setup  # password: test
 ### Request Flow
 
 1. **User → Railway → Wrapper (Express on PORT)** → routes to:
-   - `/setup/*` → setup wizard (auth: Basic with `SETUP_PASSWORD`)
-   - All other routes → proxied to internal gateway
+   - `/setup/*` → setup wizard (auth: Basic with `SETUP_PASSWORD` when set; returns 500 if unset)
+   - All other routes → proxied to internal gateway (auth: Basic with `SETUP_PASSWORD` when set; returns 500 if unset)
 
 2. **Wrapper → Gateway** (localhost:18789 by default)
    - HTTP/WebSocket reverse proxy via `http-proxy`
    - Automatically injects `Authorization: Bearer <token>` header
+
+### Security architecture (wrapper auth, then token injection)
+
+The intended design is **wrapper-level auth first**, then token injection:
+
+```
+Internet → Railway → Wrapper (auth: Basic SETUP_PASSWORD) → [if auth OK] inject gateway token & proxy → Gateway → Agent
+```
+
+- **Wrapper** enforces authentication (Basic auth with `SETUP_PASSWORD`) on all proxy and Control UI routes before any request reaches the gateway. No unauthenticated traffic is proxied.
+- **Gateway token** is injected by the wrapper only after the incoming request has been authenticated. Clients never need to know the gateway token; the wrapper acts as a trusted intermediary.
+- So the gateway’s token check is not “bypassed”—it still validates the injected token. The wrapper ensures only authenticated users can trigger those requests.
 
 ### Lifecycle States
 
@@ -82,9 +94,11 @@ open http://localhost:8080/setup  # password: test
 
 ### Environment Variables
 
-**Required:**
+**Required (for zero-touch):** AI_PROVIDER, AI_API_KEY, TELEGRAM_*, etc. (see README)
 
-- `SETUP_PASSWORD` — protects `/setup` wizard
+**Recommended:**
+
+- `SETUP_PASSWORD` — when set, protects `/setup` and gateway/Control UI (/, /openclaw) with Basic auth. When **not** set, those routes are disabled (return 500) and a prominent startup warning is logged; the deployment is not publicly accessible for setup or Control UI.
 
 **Recommended (Railway template defaults):**
 
@@ -145,11 +159,11 @@ This allows the Control UI at `/openclaw` to work without user authentication.
 
 ### Backup Export
 
-`GET /setup/export` (src/server.js:752-800):
+`GET /setup/export` (src/server.js):
 
 - Creates a `.tar.gz` archive of `STATE_DIR` and `WORKSPACE_DIR`
-- Preserves relative structure under `/data` (e.g., `.openclaw/`, `workspace/`)
-- Includes dotfiles (config, credentials, sessions)
+- **Excludes secrets:** `gateway.token`, `openclaw.json`, `mcporter.json`, and `*.token` files are not included
+- Audit log: each export request is logged with a warning
 
 ## Common Development Tasks
 
@@ -191,7 +205,7 @@ Edit `buildOnboardArgs()` (src/server.js:442-496) to add new CLI flags or auth p
 ## Railway Deployment Notes
 
 - Template must mount a volume at `/data`
-- Must set `SETUP_PASSWORD` in Railway Variables
+- **Recommended:** set `SETUP_PASSWORD` in Railway Variables so `/setup` and Control UI (/, /openclaw) are accessible. If unset, those routes return 500 and a startup warning is logged.
 - Public networking must be enabled (assigns `*.up.railway.app` domain)
 - Openclaw version is pinned via Docker build arg `OPENCLAW_GIT_REF` (default: `main`)
 

@@ -48,6 +48,19 @@ function tokenLogSafe(token) {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex").slice(0, 8);
 }
 
+/** Constant-time string comparison to mitigate timing attacks on password auth. */
+function secureCompare(a, b) {
+  const aa = Buffer.from(String(a ?? ""), "utf8");
+  const bb = Buffer.from(String(b ?? ""), "utf8");
+  const maxLen = Math.max(aa.length, bb.length);
+  if (maxLen === 0) return aa.length === bb.length;
+  const paddedA = Buffer.alloc(maxLen);
+  const paddedB = Buffer.alloc(maxLen);
+  aa.copy(paddedA);
+  bb.copy(paddedB);
+  return aa.length === bb.length && crypto.timingSafeEqual(paddedA, paddedB);
+}
+
 // Gateway admin token (protects Openclaw gateway + Control UI).
 // Must be stable across restarts. If not provided via env, persist it in the state dir.
 function resolveGatewayToken() {
@@ -165,11 +178,11 @@ function validateEnvVars() {
     }
   }
 
-  // --- TELEGRAM_USER_ID ---
-  const telegramUser = process.env.TELEGRAM_USER_ID?.trim() || "";
+  // --- TELEGRAM_USERNAME ---
+  const telegramUser = process.env.TELEGRAM_USERNAME?.trim() || "";
   if (telegramUser && !/^@?\w+$/.test(telegramUser) && !/^\d+$/.test(telegramUser)) {
     warnings.push(
-      `TELEGRAM_USER_ID="${telegramUser}" — expected @username or numeric chat ID.`,
+      `TELEGRAM_USERNAME="${telegramUser}" — expected @username or numeric chat ID.`,
     );
   }
 
@@ -180,7 +193,7 @@ function validateEnvVars() {
 }
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
-const TELEGRAM_USER_ID = process.env.TELEGRAM_USER_ID?.trim() || "";
+const TELEGRAM_USERNAME = process.env.TELEGRAM_USERNAME?.trim() || "";
 const AI_PROVIDER = process.env.AI_PROVIDER?.trim()?.toLowerCase() || "";
 const AI_API_KEY = stripBearer(process.env.AI_API_KEY?.trim() || "");
 
@@ -402,7 +415,7 @@ function canAutoOnboard() {
 }
 
 /**
- * Resolve TELEGRAM_USER_ID (numeric or @username) to a numeric chat ID,
+ * Resolve TELEGRAM_USERNAME (@username or numeric chat ID) to a numeric chat ID,
  * then write USER.md into the workspace so the agent and BOOT.md hook know
  * who the user is and how to reach them on Telegram.
  *
@@ -430,13 +443,13 @@ async function resolveTelegramAndWriteUserMd() {
     }
     console.log(`[telegram] Bot verified: @${me.result.username}`);
 
-    if (TELEGRAM_USER_ID) {
-      if (/^\d+$/.test(TELEGRAM_USER_ID)) {
-        chatId = TELEGRAM_USER_ID;
-        console.log(`[telegram] Using TELEGRAM_USER_ID (numeric): ${chatId}`);
+    if (TELEGRAM_USERNAME) {
+      if (/^\d+$/.test(TELEGRAM_USERNAME)) {
+        chatId = TELEGRAM_USERNAME;
+        console.log(`[telegram] Using TELEGRAM_USERNAME (numeric): ${chatId}`);
       } else {
         // @username — resolve from recent getUpdates
-        username = TELEGRAM_USER_ID.replace(/^@/, "").toLowerCase();
+        username = TELEGRAM_USERNAME.replace(/^@/, "").toLowerCase();
         const updatesRes = await fetch(
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`,
         );
@@ -630,7 +643,8 @@ async function autoOnboard() {
         String(INTERNAL_GATEWAY_PORT),
       ]),
     );
-    // Allow Control UI access without device pairing (must use --json for boolean)
+    // Allow Control UI without device pairing: wrapper enforces Basic auth on all
+    // proxy and Control UI routes, so gateway pairing is redundant (must use --json for boolean).
     await runCmd(
       OPENCLAW_NODE,
       clawArgs([
@@ -760,7 +774,7 @@ function requireSetupAuth(req, res, next) {
   const decoded = Buffer.from(encoded, "base64").toString("utf8");
   const idx = decoded.indexOf(":");
   const password = idx >= 0 ? decoded.slice(idx + 1) : "";
-  if (password !== SETUP_PASSWORD) {
+  if (!secureCompare(password, SETUP_PASSWORD)) {
     res.set("WWW-Authenticate", 'Basic realm="Openclaw Setup"');
     return res.status(401).send("Invalid password");
   }
@@ -792,7 +806,7 @@ function checkProxyAuth(req, res) {
   const decoded = Buffer.from(encoded, "base64").toString("utf8");
   const idx = decoded.indexOf(":");
   const password = idx >= 0 ? decoded.slice(idx + 1) : "";
-  if (password !== SETUP_PASSWORD) {
+  if (!secureCompare(password, SETUP_PASSWORD)) {
     res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
     res.status(401).send("Invalid password");
     return false;
@@ -1156,7 +1170,8 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           String(INTERNAL_GATEWAY_PORT),
         ]),
       );
-      // Allow Control UI access without device pairing (must use --json for boolean)
+      // Allow Control UI without device pairing: wrapper enforces Basic auth on all
+      // proxy and Control UI routes, so gateway pairing is redundant (must use --json for boolean).
       await runCmd(
         OPENCLAW_NODE,
         clawArgs(["config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true"]),
@@ -1455,7 +1470,12 @@ app.post("/setup/api/reset", requireSetupAuth, async (_req, res) => {
   }
 });
 
-app.get("/setup/export", requireSetupAuth, async (_req, res) => {
+app.get("/setup/export", requireSetupAuth, async (req, res) => {
+  // Audit log: export is a high-sensitivity operation (would include secrets if we didn't exclude)
+  console.warn(
+    `[export] BACKUP EXPORT requested at ${new Date().toISOString()} (auth passed, sensitive files excluded)`,
+  );
+
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
@@ -1485,6 +1505,16 @@ app.get("/setup/export", requireSetupAuth, async (_req, res) => {
     ];
   }
 
+  // Exclude secrets from backup: gateway token, openclaw.json (API keys, channel creds),
+  // mcporter.json (Senpi auth). Reduces impact of weak password or token leak.
+  const sensitivePath = (entryPath) => {
+    const p = entryPath.replace(/\\/g, "/");
+    if (p.includes("gateway.token") || p.endsWith(".token")) return true;
+    if (p.includes("openclaw.json")) return true;
+    if (p.includes("mcporter.json")) return true;
+    return false;
+  };
+
   const stream = tar.c(
     {
       gzip: true,
@@ -1492,6 +1522,7 @@ app.get("/setup/export", requireSetupAuth, async (_req, res) => {
       noMtime: true,
       cwd,
       onwarn: () => {},
+      filter: (entryPath) => !sensitivePath(entryPath),
     },
     paths,
   );
@@ -1726,7 +1757,7 @@ server.on("upgrade", async (req, socket, head) => {
   const decoded = Buffer.from(encoded, "base64").toString("utf8");
   const idx = decoded.indexOf(":");
   const password = idx >= 0 ? decoded.slice(idx + 1) : "";
-  if (password !== SETUP_PASSWORD) {
+  if (!secureCompare(password, SETUP_PASSWORD)) {
     socket.destroy();
     return;
   }
@@ -1737,15 +1768,8 @@ server.on("upgrade", async (req, socket, head) => {
     return;
   }
 
-  // The browser WebSocket API cannot send custom headers, so the gateway
-  // looks for the token as a URL query parameter instead of Authorization header.
-  // Inject the token into the URL so the gateway accepts the connection.
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  if (!url.searchParams.has("token")) {
-    url.searchParams.set("token", OPENCLAW_GATEWAY_TOKEN);
-    req.url = url.pathname + url.search;
-  }
-
+  // Pass token via Authorization header only; do not put it in the URL (avoids
+  // logging in access logs, load balancers, browser history, referrers).
   debug(`[ws-upgrade] Proxying WebSocket upgrade for ${req.url}`);
 
   proxy.ws(req, socket, head, {
