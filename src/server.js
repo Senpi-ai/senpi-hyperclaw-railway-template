@@ -27,10 +27,25 @@ if (!process.env.MCPORTER_CONFIG) {
 // Protect /setup with a user-provided password.
 const SETUP_PASSWORD = process.env.SETUP_PASSWORD?.trim();
 
+if (!SETUP_PASSWORD) {
+  console.error("================================================================");
+  console.error("WARNING: SETUP_PASSWORD is not configured.");
+  console.error("  /setup and gateway routes (/, /openclaw) will be disabled.");
+  console.error("  Set SETUP_PASSWORD in Railway Variables to enable the setup");
+  console.error("  wizard and Control UI access.");
+  console.error("================================================================");
+}
+
 // Debug logging helper
 const DEBUG = process.env.OPENCLAW_TEMPLATE_DEBUG?.toLowerCase() === "true";
 function debug(...args) {
   if (DEBUG) console.log(...args);
+}
+
+/** Returns a short fingerprint for logging; never logs the actual token. */
+function tokenLogSafe(token) {
+  if (!token || typeof token !== "string") return "(none)";
+  return crypto.createHash("sha256").update(token, "utf8").digest("hex").slice(0, 8);
 }
 
 // Gateway admin token (protects Openclaw gateway + Control UI).
@@ -44,8 +59,7 @@ function resolveGatewayToken() {
 
   if (envTok) {
     console.log(`[token] ✓ Using token from OPENCLAW_GATEWAY_TOKEN env variable`);
-    console.log(`[token]   First 16 chars: ${envTok.slice(0, 16)}...`);
-    console.log(`[token]   Full token: ${envTok}`);
+    console.log(`[token]   Fingerprint: ${tokenLogSafe(envTok)} (len: ${envTok.length})`);
     return envTok;
   }
 
@@ -57,7 +71,7 @@ function resolveGatewayToken() {
     const existing = fs.readFileSync(tokenPath, "utf8").trim();
     if (existing) {
       console.log(`[token] ✓ Using token from persisted file`);
-      console.log(`[token]   First 16 chars: ${existing.slice(0, 8)}...`);
+      console.log(`[token]   Fingerprint: ${tokenLogSafe(existing)} (len: ${existing.length})`);
       return existing;
     }
   } catch (err) {
@@ -65,7 +79,7 @@ function resolveGatewayToken() {
   }
 
   const generated = crypto.randomBytes(32).toString("hex");
-  console.log(`[token] ⚠️  Generating new random token (${generated.slice(0, 8)}...)`);
+  console.log(`[token] ⚠️  Generating new random token (fingerprint: ${tokenLogSafe(generated)})`);
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
     fs.writeFileSync(tokenPath, generated, { encoding: "utf8", mode: 0o600 });
@@ -78,7 +92,7 @@ function resolveGatewayToken() {
 
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
-console.log(`[token] Final resolved token: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
+console.log(`[token] Final resolved token fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
 console.log(`[token] ========== TOKEN RESOLUTION COMPLETE ==========\n`);
 
 // Where the gateway will listen internally (we proxy to it).
@@ -249,7 +263,7 @@ async function startGateway() {
   // Sync wrapper token to openclaw.json before every gateway start.
   // This ensures the gateway's config-file token matches what the wrapper injects via proxy.
   console.log(`[gateway] ========== GATEWAY START TOKEN SYNC ==========`);
-  console.log(`[gateway] Syncing wrapper token to config: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
+  console.log(`[gateway] Syncing wrapper token to config (fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)}, len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
 
   const syncResult = await runCmd(
     OPENCLAW_NODE,
@@ -271,15 +285,13 @@ async function startGateway() {
     const configToken = config?.gateway?.auth?.token;
 
     console.log(`[gateway] Token verification:`);
-    console.log(`[gateway]   Wrapper: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
-    console.log(`[gateway]   Config:  ${configToken?.slice(0, 16)}... (len: ${configToken?.length || 0})`);
+    console.log(`[gateway]   Wrapper fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
+    console.log(`[gateway]   Config fingerprint:  ${tokenLogSafe(configToken)} (len: ${configToken?.length || 0})`);
 
     if (configToken !== OPENCLAW_GATEWAY_TOKEN) {
       console.error(`[gateway] ✗ Token mismatch detected!`);
-      console.error(`[gateway]   Full wrapper: ${OPENCLAW_GATEWAY_TOKEN}`);
-      console.error(`[gateway]   Full config:  ${configToken || 'null'}`);
       throw new Error(
-        `Token mismatch: wrapper has ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... but config has ${(configToken || 'null')?.slice?.(0, 16)}...`
+        `Token mismatch: wrapper fingerprint ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} vs config ${tokenLogSafe(configToken)}`
       );
     }
     console.log(`[gateway] ✓ Token verification PASSED`);
@@ -594,7 +606,7 @@ async function autoOnboard() {
       if (configToken !== OPENCLAW_GATEWAY_TOKEN) {
         console.error("[auto-onboard] Token mismatch after sync!");
         throw new Error(
-          `Token mismatch: wrapper has ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... but config has ${(configToken || "null")?.slice?.(0, 16)}...`,
+          `Token mismatch: wrapper fingerprint ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} vs config ${tokenLogSafe(configToken)}`,
         );
       }
       console.log("[auto-onboard] Token sync verified");
@@ -755,6 +767,39 @@ function requireSetupAuth(req, res, next) {
   return next();
 }
 
+/**
+ * Check that the request is authenticated for proxy (gateway/Control UI) access.
+ * Uses the same SETUP_PASSWORD Basic auth as /setup so one password protects everything.
+ * Returns true if authenticated; otherwise sends 401/500 and returns false.
+ */
+function checkProxyAuth(req, res) {
+  if (!SETUP_PASSWORD) {
+    res
+      .status(500)
+      .type("text/plain")
+      .send(
+        "SETUP_PASSWORD is not set. Set it in Railway Variables to access the gateway.",
+      );
+    return false;
+  }
+  const header = req.headers.authorization || "";
+  const [scheme, encoded] = header.split(" ");
+  if (scheme !== "Basic" || !encoded) {
+    res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
+    res.status(401).send("Auth required");
+    return false;
+  }
+  const decoded = Buffer.from(encoded, "base64").toString("utf8");
+  const idx = decoded.indexOf(":");
+  const password = idx >= 0 ? decoded.slice(idx + 1) : "";
+  if (password !== SETUP_PASSWORD) {
+    res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
+    res.status(401).send("Invalid password");
+    return false;
+  }
+  return true;
+}
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -775,6 +820,13 @@ app.get("/setup/styles.css", requireSetupAuth, (_req, res) => {
 
 app.get("/setup", requireSetupAuth, (_req, res) => {
   res.sendFile(path.join(process.cwd(), "src", "public", "setup.html"));
+});
+
+// Token-exchange: return gateway token only after auth. Control UI script fetches this
+// instead of receiving the token in HTML, so the token is never embedded in the page source.
+app.get("/setup/api/gateway-token", requireSetupAuth, (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ token: OPENCLAW_GATEWAY_TOKEN });
 });
 
 app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
@@ -1002,11 +1054,12 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     const payload = req.body || {};
     const onboardArgs = buildOnboardArgs(payload);
 
-    // DIAGNOSTIC: Log token we're passing to onboard
+    // DIAGNOSTIC: Log token fingerprint only (never the actual token)
     console.log(`[onboard] ========== TOKEN DIAGNOSTIC START ==========`);
-    console.log(`[onboard] Wrapper token (from env/file/generated): ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... (length: ${OPENCLAW_GATEWAY_TOKEN.length})`);
-    console.log(`[onboard] Onboard command args include: --gateway-token ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...`);
-    console.log(`[onboard] Full onboard command: node ${clawArgs(onboardArgs).join(' ').replace(OPENCLAW_GATEWAY_TOKEN, OPENCLAW_GATEWAY_TOKEN.slice(0, 16) + '...')}`);
+    console.log(`[onboard] Wrapper token fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} (length: ${OPENCLAW_GATEWAY_TOKEN.length})`);
+    console.log(`[onboard] Onboard command args include: --gateway-token <redacted>`);
+    const cmdForLog = clawArgs(onboardArgs).join(" ").replace(OPENCLAW_GATEWAY_TOKEN, "<redacted>");
+    console.log(`[onboard] Full onboard command: node ${cmdForLog}`);
 
     const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
 
@@ -1019,13 +1072,13 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       try {
         const configAfterOnboard = JSON.parse(fs.readFileSync(configPath(), "utf8"));
         const tokenAfterOnboard = configAfterOnboard?.gateway?.auth?.token;
-        console.log(`[onboard] Token in config AFTER onboard: ${tokenAfterOnboard?.slice(0, 16)}... (length: ${tokenAfterOnboard?.length || 0})`);
-        console.log(`[onboard] Token match: ${tokenAfterOnboard === OPENCLAW_GATEWAY_TOKEN ? '✓ MATCHES' : '✗ MISMATCH!'}`);
+        console.log(`[onboard] Token in config AFTER onboard: fingerprint ${tokenLogSafe(tokenAfterOnboard)} (length: ${tokenAfterOnboard?.length || 0})`);
+        console.log(`[onboard] Token match: ${tokenAfterOnboard === OPENCLAW_GATEWAY_TOKEN ? "✓ MATCHES" : "✗ MISMATCH!"}`);
         if (tokenAfterOnboard !== OPENCLAW_GATEWAY_TOKEN) {
           console.log(`[onboard] ⚠️  PROBLEM: onboard command ignored --gateway-token flag and wrote its own token!`);
           extra += `\n[WARNING] onboard wrote different token than expected\n`;
-          extra += `  Expected: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...\n`;
-          extra += `  Got:      ${tokenAfterOnboard?.slice(0, 16)}...\n`;
+          extra += `  Expected fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)}\n`;
+          extra += `  Got fingerprint:      ${tokenLogSafe(tokenAfterOnboard)}\n`;
         }
       } catch (err) {
         console.error(`[onboard] Could not check config after onboard: ${err}`);
@@ -1036,7 +1089,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     if (ok) {
       // Ensure gateway token is written into config so the browser UI can authenticate reliably.
       // (We also enforce loopback bind since the wrapper proxies externally.)
-      console.log(`[onboard] Now syncing wrapper token to config (${OPENCLAW_GATEWAY_TOKEN.slice(0, 8)}...)`);
+      console.log(`[onboard] Now syncing wrapper token to config (fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)})`);
 
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.mode", "local"]));
       await runCmd(
@@ -1071,16 +1124,14 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         const configToken = config?.gateway?.auth?.token;
 
         console.log(`[onboard] Token verification after sync:`);
-        console.log(`[onboard]   Wrapper token: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}... (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
-        console.log(`[onboard]   Config token:  ${configToken?.slice(0, 16)}... (len: ${configToken?.length || 0})`);
+        console.log(`[onboard]   Wrapper fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)} (len: ${OPENCLAW_GATEWAY_TOKEN.length})`);
+        console.log(`[onboard]   Config fingerprint:  ${tokenLogSafe(configToken)} (len: ${configToken?.length || 0})`);
 
         if (configToken !== OPENCLAW_GATEWAY_TOKEN) {
           console.error(`[onboard] ✗ ERROR: Token mismatch after config set!`);
-          console.error(`[onboard]   Full wrapper token: ${OPENCLAW_GATEWAY_TOKEN}`);
-          console.error(`[onboard]   Full config token:  ${configToken || 'null'}`);
           extra += `\n[ERROR] Token verification failed! Config has different token than wrapper.\n`;
-          extra += `  Wrapper: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...\n`;
-          extra += `  Config:  ${configToken?.slice(0, 16)}...\n`;
+          extra += `  Wrapper fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)}\n`;
+          extra += `  Config fingerprint:  ${tokenLogSafe(configToken)}\n`;
         } else {
           console.log(`[onboard] ✓ Token verification PASSED - tokens match!`);
           extra += `\n[onboard] ✓ Gateway token synced successfully\n`;
@@ -1467,7 +1518,7 @@ proxy.on("error", (err, _req, _res) => {
 
 // Inject auth token into HTTP proxy requests
 proxy.on("proxyReq", (proxyReq, req, res) => {
-  console.log(`[proxy] HTTP ${req.method} ${req.url} - injecting token: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...`);
+  console.log(`[proxy] HTTP ${req.method} ${req.url} - injecting token (fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)})`);
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
 });
 
@@ -1475,15 +1526,18 @@ proxy.on("proxyReq", (proxyReq, req, res) => {
 // the `headers` option in proxy.ws() does NOT reliably work with http-proxy for WS upgrades).
 proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
   proxyReq.setHeader("Authorization", `Bearer ${OPENCLAW_GATEWAY_TOKEN}`);
-  debug(`[proxy-ws] WebSocket ${req.url} - injected token: ${OPENCLAW_GATEWAY_TOKEN.slice(0, 16)}...`);
+  debug(`[proxy-ws] WebSocket ${req.url} - injected token (fingerprint: ${tokenLogSafe(OPENCLAW_GATEWAY_TOKEN)})`);
 });
 
 // Intercept Control UI pages and inject the gateway token so the browser-side
 // JS can authenticate its WebSocket connection.
 // The Control UI loads at BOTH "/" and "/openclaw" (confirmed by proxy logs).
-// The browser WebSocket API cannot send custom headers, so the token must be
-// available to the page's JavaScript via localStorage / input auto-fill.
-app.get(["/", "/openclaw", "/openclaw/"], async (req, res, next) => {
+// Require auth so the token is never sent to unauthenticated clients.
+// The token is fetched by the injected script from /setup/api/gateway-token (same auth).
+app.get(["/", "/openclaw", "/openclaw/"], (req, res, next) => {
+  if (!checkProxyAuth(req, res)) return;
+  next();
+}, async (req, res, next) => {
   if (!isConfigured()) return next();
 
   try {
@@ -1505,71 +1559,49 @@ app.get(["/", "/openclaw", "/openclaw/"], async (req, res, next) => {
 
     let html = await upstream.text();
 
-    // Inject a script that:
-    // 1. Stores the token in localStorage under common key names
-    // 2. Sets a cookie so WebSocket upgrades can carry it
-    // 3. Auto-fills the "Gateway Token" input field (React-compatible)
-    // 4. Optionally auto-clicks "Connect"
+    // Inject a script that fetches the token via authenticated API (never embedded in HTML),
+    // then stores it in localStorage/cookies and auto-fills the Gateway Token field.
     const autoTokenScript = `
 <script data-auto-token>
 (function(){
-  var TOKEN = ${JSON.stringify(OPENCLAW_GATEWAY_TOKEN)};
+  fetch("/setup/api/gateway-token", { credentials: "same-origin" })
+    .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error("auth required")); })
+    .then(function(data){ var TOKEN = data.token; if (!TOKEN) return;
 
-  // 1. Store in localStorage (the Control UI likely reads from here)
   try {
-    var keys = [
-      "gateway-token", "gatewayToken", "openclaw-token", "token",
-      "oc:gateway-token", "oc:token", "openclaw-gateway-token"
-    ];
-    for (var i = 0; i < keys.length; i++) {
-      localStorage.setItem(keys[i], TOKEN);
-    }
+    var keys = ["gateway-token", "gatewayToken", "openclaw-token", "token", "oc:gateway-token", "oc:token", "openclaw-gateway-token"];
+    for (var i = 0; i < keys.length; i++) localStorage.setItem(keys[i], TOKEN);
   } catch(e) {}
-
-  // 2. Set cookies (sent automatically with WebSocket upgrade requests)
   try {
     document.cookie = "token=" + TOKEN + "; path=/; SameSite=Lax";
     document.cookie = "gateway-token=" + TOKEN + "; path=/; SameSite=Lax";
   } catch(e) {}
 
-  // 3. Auto-fill input fields (React/SPA compatible)
-  var nativeSetter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype, "value"
-  ).set;
-
+  var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   function fill() {
     var inputs = document.querySelectorAll("input");
     var filled = false;
     for (var j = 0; j < inputs.length; j++) {
       var el = inputs[j];
-      // Gather context: label text, placeholder, current value
       var ctx = "";
       var parent = el.closest("label, [class*=field], [class*=form-group]");
       if (parent) ctx += " " + parent.textContent.toLowerCase();
       var prev = el.previousElementSibling;
       if (prev) ctx += " " + prev.textContent.toLowerCase();
-      ctx += " " + (el.placeholder || "").toLowerCase();
-      ctx += " " + (el.getAttribute("aria-label") || "").toLowerCase();
+      ctx += " " + (el.placeholder || "").toLowerCase() + " " + (el.getAttribute("aria-label") || "").toLowerCase();
       var val = (el.value || "").trim();
-
-      // Match "Gateway Token" field, skip URL / session / password fields
-      var isTokenField = (
-        (ctx.includes("gateway token") || ctx.includes("token")) &&
-        !ctx.includes("session") && !ctx.includes("url") &&
-        !ctx.includes("password") && !ctx.includes("websocket")
-      );
-      // Also match if the field has the placeholder literal
+      var isTokenField = (ctx.includes("gateway token") || ctx.includes("token")) && !ctx.includes("session") && !ctx.includes("url") && !ctx.includes("password") && !ctx.includes("websocket");
       if (val === "OPENCLAW_GATEWAY_TOKEN") isTokenField = true;
-
-      if (isTokenField && val !== TOKEN) {
-        // Use native setter to work with React controlled inputs
-        nativeSetter.call(el, TOKEN);
-        el.dispatchEvent(new Event("input", {bubbles:true}));
-        el.dispatchEvent(new Event("change", {bubbles:true}));
-        filled = true;
+      if (isTokenField) {
+        if (val !== TOKEN) {
+          nativeSetter.call(el, TOKEN);
+          el.dispatchEvent(new Event("input", {bubbles:true}));
+          el.dispatchEvent(new Event("change", {bubbles:true}));
+          filled = true;
+        }
+        try { el.setAttribute("type", "password"); } catch(e) {}
       }
     }
-    // 4. Auto-click Connect button if found
     if (filled) {
       var btns = document.querySelectorAll("button");
       for (var k = 0; k < btns.length; k++) {
@@ -1581,23 +1613,19 @@ app.get(["/", "/openclaw", "/openclaw/"], async (req, res, next) => {
     }
     return filled;
   }
-
-  // Try immediately, then observe DOM for SPA async rendering
   function tryFill() {
     if (!fill()) {
-      var obs = new MutationObserver(function(){
-        if (fill()) obs.disconnect();
-      });
+      var obs = new MutationObserver(function(){ if (fill()) obs.disconnect(); });
       obs.observe(document.documentElement, {childList:true, subtree:true});
       setTimeout(function(){ obs.disconnect(); }, 20000);
     }
   }
-
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", tryFill);
   } else {
     tryFill();
   }
+  }).catch(function(){});
 })();
 </script>`;
 
@@ -1618,6 +1646,9 @@ app.get(["/", "/openclaw", "/openclaw/"], async (req, res, next) => {
 });
 
 app.use(async (req, res) => {
+  // Require authentication before proxying to gateway (prevents unauthenticated access).
+  if (!checkProxyAuth(req, res)) return;
+
   // If not configured, either show auto-onboard progress or redirect to /setup.
   if (!isConfigured() && !req.path.startsWith("/setup")) {
     if (onboardingInProgress) {
@@ -1678,6 +1709,24 @@ const server = app.listen(PORT, () => {
 // Handle WebSocket upgrades
 server.on("upgrade", async (req, socket, head) => {
   if (!isConfigured()) {
+    socket.destroy();
+    return;
+  }
+  // Require same Basic auth as proxy so WebSocket connections are protected.
+  if (!SETUP_PASSWORD) {
+    socket.destroy();
+    return;
+  }
+  const header = req.headers.authorization || "";
+  const [scheme, encoded] = header.split(" ");
+  if (scheme !== "Basic" || !encoded) {
+    socket.destroy();
+    return;
+  }
+  const decoded = Buffer.from(encoded, "base64").toString("utf8");
+  const idx = decoded.indexOf(":");
+  const password = idx >= 0 ? decoded.slice(idx + 1) : "";
+  if (password !== SETUP_PASSWORD) {
     socket.destroy();
     return;
   }
