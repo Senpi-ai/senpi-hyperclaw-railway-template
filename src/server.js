@@ -498,6 +498,31 @@ async function resolveTelegramAndWriteUserMd() {
     return;
   }
 
+  const userMdPath = path.join(WORKSPACE_DIR, "USER.md");
+
+  // Preserve existing sections (e.g. Trading Profile) from USER.md so we don't
+  // wipe agent-written data on restart / re-onboard.
+  let existingExtra = "";
+  let existingChatId = "";
+  try {
+    const existing = fs.readFileSync(userMdPath, "utf8");
+    // Extract a previously resolved chat ID so we can reuse it when getUpdates
+    // returns empty (the gateway's Telegram poller consumes updates).
+    const chatIdMatch = existing.match(/^- Chat ID:\s*(\d+)/m);
+    if (chatIdMatch) {
+      existingChatId = chatIdMatch[1];
+    }
+    // Keep everything after the Telegram section (Trading Profile, etc.)
+    const telegramSectionEnd = existing.search(
+      /\n## (?!Telegram\b)/,
+    );
+    if (telegramSectionEnd !== -1) {
+      existingExtra = existing.slice(telegramSectionEnd);
+    }
+  } catch {
+    // No existing USER.md — first deploy
+  }
+
   try {
     // Verify bot token
     const meRes = await fetch(
@@ -518,12 +543,12 @@ async function resolveTelegramAndWriteUserMd() {
       } else {
         // @username — resolve from recent getUpdates
         username = TELEGRAM_USERNAME.replace(/^@/, "").toLowerCase();
+
+        // Try getUpdates first
         const updatesRes = await fetch(
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`,
         );
         const updates = await updatesRes.json();
-        console.log("[Telegram]updates");
-        console.log(JSON.stringify(updates, null, 2));
         const updateList = (updates.ok && updates.result) || [];
 
         for (const update of updateList) {
@@ -543,6 +568,13 @@ async function resolveTelegramAndWriteUserMd() {
           console.log(
             `[telegram] Resolved @${username} → chat ID ${chatId}`,
           );
+        } else if (existingChatId) {
+          // getUpdates returned empty (gateway poller consumed them), but we
+          // have a previously resolved chat ID from USER.md — reuse it.
+          chatId = existingChatId;
+          console.log(
+            `[telegram] getUpdates empty — reusing previously resolved chat ID ${chatId} for @${username}`,
+          );
         } else {
           console.warn(
             `[telegram] Could not resolve @${username} — ` +
@@ -555,8 +587,14 @@ async function resolveTelegramAndWriteUserMd() {
     console.error(`[telegram] Error resolving user: ${err.message}`);
   }
 
-  // Write USER.md with Telegram contact info so BOOT.md can message the user
-  const userMdPath = path.join(WORKSPACE_DIR, "USER.md");
+  // If resolution failed entirely but we have a previously stored chat ID, use it.
+  if (!chatId && existingChatId) {
+    chatId = existingChatId;
+    console.log(`[telegram] Falling back to previously resolved chat ID ${chatId}`);
+  }
+
+  // Write USER.md with Telegram contact info so BOOT.md can message the user.
+  // Preserve extra sections (Trading Profile, etc.) that the agent may have written.
   const lines = ["# User"];
   if (chatId) {
     lines.push("");
@@ -578,7 +616,11 @@ async function resolveTelegramAndWriteUserMd() {
       "Cannot send Telegram messages until the user messages the bot first.",
     );
   }
-  lines.push("");
+  if (existingExtra) {
+    lines.push(existingExtra);
+  } else {
+    lines.push("");
+  }
 
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
   fs.writeFileSync(userMdPath, lines.join("\n"));
