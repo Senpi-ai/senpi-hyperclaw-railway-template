@@ -1886,16 +1886,21 @@ server.on("upgrade", async (req, socket, head) => {
     return;
   }
 
+  if (!OPENCLAW_GATEWAY_TOKEN) {
+    console.error("[ws-upgrade] Cannot proxy WebSocket: OPENCLAW_GATEWAY_TOKEN is empty");
+    socket.destroy();
+    return;
+  }
+
+  // Set gateway token on the request so the forwarded upgrade has it. proxyReqWs also
+  // sets it, but setting here ensures the token is present regardless of http-proxy behavior.
+  req.headers.authorization = `Bearer ${OPENCLAW_GATEWAY_TOKEN}`;
+
   // Pass token via Authorization header only; do not put it in the URL (avoids
   // logging in access logs, load balancers, browser history, referrers).
   debug(`[ws-upgrade] Proxying WebSocket upgrade for ${req.url}`);
 
-  proxy.ws(req, socket, head, {
-    target: GATEWAY_TARGET,
-    headers: {
-      Authorization: `Bearer ${OPENCLAW_GATEWAY_TOKEN}`,
-    },
-  });
+  proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
 });
 
 process.on("SIGTERM", () => {
