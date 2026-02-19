@@ -116,6 +116,12 @@ const INTERNAL_GATEWAY_PORT = Number.parseInt(
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST ?? "127.0.0.1";
 const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`;
 
+// How long to wait for the gateway to respond on health endpoints (cold start can take 30–60s).
+const GATEWAY_READY_TIMEOUT_MS = Number.parseInt(
+  process.env.GATEWAY_READY_TIMEOUT_MS ?? "60000",
+  10,
+) || 60000;
+
 // Always run the built-from-source CLI entry directly to avoid PATH/global-install mismatches.
 const OPENCLAW_ENTRY =
   process.env.OPENCLAW_ENTRY?.trim() || "/openclaw/dist/entry.js";
@@ -176,6 +182,15 @@ function validateEnvVars() {
       warnings.push('SENPI_AUTH_TOKEN starts with "Bearer " — stripping prefix.');
       process.env.SENPI_AUTH_TOKEN = stripBearer(senpiToken);
     }
+    if (senpiToken.length < 16) {
+      warnings.push(
+        "SENPI_AUTH_TOKEN looks too short — Senpi MCP may reject it. Check the value from Senpi.",
+      );
+    }
+  } else {
+    warnings.push(
+      "SENPI_AUTH_TOKEN is blank — Senpi MCP will not authenticate. Set it in Variables if you use Senpi tools.",
+    );
   }
 
   // --- TELEGRAM_USERNAME ---
@@ -243,7 +258,7 @@ function sleep(ms) {
 }
 
 async function waitForGatewayReady(opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const timeoutMs = opts.timeoutMs ?? GATEWAY_READY_TIMEOUT_MS;
   const start = Date.now();
   const endpoints = ["/openclaw", "/openclaw", "/", "/health"];
   
@@ -328,13 +343,26 @@ async function startGateway() {
     OPENCLAW_GATEWAY_TOKEN,
   ];
 
+  // Capture last 4KB of stderr so we can log it on non-zero exit (helps debug "exited code=1" in Railway).
+  let stderrTail = Buffer.alloc(0);
+  const stderrMaxBytes = 4096;
+
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
-    stdio: "inherit",
+    stdio: ["inherit", "pipe", "pipe"],
     env: {
       ...process.env,
       OPENCLAW_STATE_DIR: STATE_DIR,
       OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
     },
+  });
+
+  gatewayProc.stdout?.pipe(process.stdout);
+  gatewayProc.stderr?.pipe(process.stderr);
+  gatewayProc.stderr?.on("data", (chunk) => {
+    stderrTail = Buffer.concat([stderrTail, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+    if (stderrTail.length > stderrMaxBytes) {
+      stderrTail = stderrTail.subarray(-stderrMaxBytes);
+    }
   });
 
   const gatewayCmdForLog = clawArgs(args).join(" ").replace(OPENCLAW_GATEWAY_TOKEN, "<redacted>");
@@ -350,6 +378,12 @@ async function startGateway() {
 
   gatewayProc.on("exit", (code, signal) => {
     console.error(`[gateway] exited code=${code} signal=${signal}`);
+    if (code !== 0 && code != null && stderrTail.length > 0) {
+      const tail = stderrTail.toString("utf8").trim();
+      if (tail) {
+        console.error(`[gateway] stderr before exit:\n${tail}`);
+      }
+    }
     gatewayProc = null;
   });
 }
@@ -360,7 +394,7 @@ async function ensureGatewayRunning() {
   if (!gatewayStarting) {
     gatewayStarting = (async () => {
       await startGateway();
-      const ready = await waitForGatewayReady({ timeoutMs: 20_000 });
+      const ready = await waitForGatewayReady({ timeoutMs: GATEWAY_READY_TIMEOUT_MS });
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
@@ -866,6 +900,7 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
 // Minimal health endpoint for Railway.
+// Must be first route: no auth, no config/gateway dependency — so Railway health checks always pass.
 app.get("/setup/healthz", (_req, res) => res.json({ ok: true }));
 
 // Serve static files for setup wizard
@@ -1644,6 +1679,8 @@ app.get(["/", "/openclaw", "/openclaw/"], (req, res, next) => {
 
     // Inject a script that fetches the token via authenticated API (never embedded in HTML),
     // then stores it in localStorage/cookies and auto-fills the Gateway Token field.
+    // We re-apply the token periodically so we win over React state after redeploy (Control UI
+    // may read token before our fetch completes; cookies/localStorage/input must have current token).
     const autoTokenScript = `
 <script data-auto-token>
 (function(){
@@ -1651,14 +1688,17 @@ app.get(["/", "/openclaw", "/openclaw/"], (req, res, next) => {
     .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error("auth required")); })
     .then(function(data){ var TOKEN = data.token; if (!TOKEN) return;
 
-  try {
-    var keys = ["gateway-token", "gatewayToken", "openclaw-token", "token", "oc:gateway-token", "oc:token", "openclaw-gateway-token"];
-    for (var i = 0; i < keys.length; i++) localStorage.setItem(keys[i], TOKEN);
-  } catch(e) {}
-  try {
-    document.cookie = "token=" + TOKEN + "; path=/; SameSite=Lax";
-    document.cookie = "gateway-token=" + TOKEN + "; path=/; SameSite=Lax";
-  } catch(e) {}
+  function applyToken() {
+    try {
+      var keys = ["gateway-token", "gatewayToken", "openclaw-token", "token", "oc:gateway-token", "oc:token", "openclaw-gateway-token"];
+      for (var i = 0; i < keys.length; i++) localStorage.setItem(keys[i], TOKEN);
+    } catch(e) {}
+    try {
+      document.cookie = "token=" + TOKEN + "; path=/; SameSite=Lax";
+      document.cookie = "gateway-token=" + TOKEN + "; path=/; SameSite=Lax";
+    } catch(e) {}
+  }
+  applyToken();
 
   var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   function fill() {
@@ -1708,6 +1748,12 @@ app.get(["/", "/openclaw", "/openclaw/"], (req, res, next) => {
   } else {
     tryFill();
   }
+  var applyCount = 0;
+  var interval = setInterval(function(){
+    applyToken();
+    fill();
+    if (++applyCount >= 24) clearInterval(interval);
+  }, 500);
   }).catch(function(){});
 })();
 </script>`;

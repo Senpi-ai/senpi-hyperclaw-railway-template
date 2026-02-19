@@ -121,8 +121,14 @@ function writeMcporterConfig() {
     config = { mcpServers: {}, imports: [] };
   }
 
-  // Upsert the senpi server (update token + URL, keep everything else)
-  config.mcpServers.senpi = senpiEntry;
+  // When token is blank, remove Senpi so the gateway doesn't try to connect (avoids auth failures / health check issues).
+  // When token is set, upsert the senpi server.
+  if (senpiToken) {
+    config.mcpServers.senpi = senpiEntry;
+  } else {
+    delete config.mcpServers.senpi;
+    console.log("[bootstrap] SENPI_AUTH_TOKEN is blank — Senpi MCP not configured (set it in Variables to enable).");
+  }
 
   fs.writeFileSync(MCPORTER_PATH, JSON.stringify(config, null, 2));
 }
