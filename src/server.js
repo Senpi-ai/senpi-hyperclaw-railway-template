@@ -337,7 +337,8 @@ async function startGateway() {
     },
   });
 
-  console.log(`[gateway] starting with command: ${OPENCLAW_NODE} ${clawArgs(args).join(" ")}`);
+  const gatewayCmdForLog = clawArgs(args).join(" ").replace(OPENCLAW_GATEWAY_TOKEN, "<redacted>");
+  console.log(`[gateway] starting with command: ${OPENCLAW_NODE} ${gatewayCmdForLog}`);
   console.log(`[gateway] STATE_DIR: ${STATE_DIR}`);
   console.log(`[gateway] WORKSPACE_DIR: ${WORKSPACE_DIR}`);
   console.log(`[gateway] config path: ${configPath()}`);
@@ -568,9 +569,11 @@ async function autoOnboard() {
     };
 
     const onboardArgs = buildOnboardArgs(payload);
-    console.log(
-      `[auto-onboard] Running: openclaw ${onboardArgs.join(" ").replace(AI_API_KEY, "***")}`,
-    );
+    const autoOnboardCmdForLog = onboardArgs
+      .join(" ")
+      .replace(AI_API_KEY, "***")
+      .replace(OPENCLAW_GATEWAY_TOKEN, "<redacted>");
+    console.log(`[auto-onboard] Running: openclaw ${autoOnboardCmdForLog}`);
 
     const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
     const ok = onboard.code === 0 && isConfigured();
