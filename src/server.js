@@ -544,7 +544,7 @@ async function resolveTelegramAndWriteUserMd() {
         // @username — resolve from recent getUpdates
         username = TELEGRAM_USERNAME.replace(/^@/, "").toLowerCase();
 
-        // Try getUpdates first
+      
         const updatesRes = await fetch(
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`,
         );
@@ -632,6 +632,12 @@ async function resolveTelegramAndWriteUserMd() {
  * This enables zero-touch Railway deployments: set env vars → deploy → bot works.
  */
 async function autoOnboard() {
+
+  // using bot token & username resolve chatId
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_USERNAME) {
+    await resolveTelegramAndWriteUserMd(TELEGRAM_BOT_TOKEN, TELEGRAM_USERNAME);
+  }
+
   if (!canAutoOnboard()) {
     if (!isConfigured() && (AI_PROVIDER || AI_API_KEY)) {
       console.log(
@@ -843,9 +849,9 @@ async function autoOnboard() {
       }
     }
 
-    // --- Resolve Telegram user BEFORE gateway starts ---
-    // (Must happen before gateway claims Telegram polling — only one consumer allowed)
-    await resolveTelegramAndWriteUserMd();
+    // // --- Resolve Telegram user BEFORE gateway starts ---
+    // // (Must happen before gateway claims Telegram polling — only one consumer allowed)
+    // await resolveTelegramAndWriteUserMd();
 
     // --- Bootstrap and start gateway ---
     // (Senpi MCP server is configured via mcporter.json in bootstrapOpenClaw(),
