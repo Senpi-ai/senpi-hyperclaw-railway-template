@@ -36,7 +36,7 @@ This repo packages **Openclaw** for Railway with **zero-touch auto-configuration
 | `OPENCLAW_STATE_DIR` | Recommended | Set to `/data/.openclaw` for persistence |
 | `OPENCLAW_WORKSPACE_DIR` | Recommended | Set to `/data/workspace` for persistence |
 | `OPENCLAW_GATEWAY_TOKEN` | Optional | Stable gateway auth token (auto-generated if unset) |
-| `SETUP_PASSWORD` | Optional | Password for the `/setup` wizard (manual fallback) |
+| `SETUP_PASSWORD` | Recommended | Password for `/setup` and Control UI (/, /openclaw). If unset, those routes are disabled and a startup warning is logged. |
 
 4. Enable **Public Networking** (HTTP) — Railway assigns a domain
 5. Deploy — everything auto-configures
@@ -78,7 +78,7 @@ AI_API_KEY=sk-ant-your-key-here
 
 If you prefer manual configuration or don't set `AI_PROVIDER`/`AI_API_KEY`, the setup wizard is still available:
 
-1. Set `SETUP_PASSWORD` in Railway Variables
+1. Set `SETUP_PASSWORD` in Railway Variables (if unset, `/setup` and the Control UI are disabled and a startup warning is logged)
 2. Visit `https://<your-app>.up.railway.app/setup`
 3. Complete the wizard to choose your AI provider, enter API keys, and configure channels
 

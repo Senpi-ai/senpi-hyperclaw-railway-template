@@ -10,8 +10,11 @@ restartPolicyType = "on_failure"
 PORT = "8080"
 OPENCLAW_STATE_DIR = "/data/.openclaw"
 OPENCLAW_WORKSPACE_DIR = "/data/workspace"
+# Recommended: set SETUP_PASSWORD so /setup and Control UI (/, /openclaw) are accessible.
+# If unset, those routes return 500 and a prominent startup warning is logged.
+SETUP_PASSWORD = ""
 AI_PROVIDER = ""
 AI_API_KEY = ""
 TELEGRAM_BOT_TOKEN = ""
-TELEGRAM_USER_ID = ""
+TELEGRAM_USERNAME = ""
 SENPI_AUTH_TOKEN = ""
