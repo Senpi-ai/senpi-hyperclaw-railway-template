@@ -611,10 +611,18 @@ async function resolveTelegramAndWriteUserMd() {
     lines.push("");
     lines.push(`## Telegram`);
     lines.push(`- Username: @${username}`);
-    lines.push(`- Chat ID: unknown (user hasn't messaged the bot yet)`);
+    lines.push(`- No chat ID yet — user must message the bot first (e.g. send /start).`);
     lines.push("");
     lines.push(
-      "Cannot send Telegram messages until the user messages the bot first.",
+      "Do not send Telegram messages until a chat ID is set. Do not use telegram:unknown or @unknown as a target.",
+    );
+  } else {
+    lines.push("");
+    lines.push(`## Telegram`);
+    lines.push(`- No chat ID or username. Set TELEGRAM_USERNAME and message the bot, or send /start before deploy.`);
+    lines.push("");
+    lines.push(
+      "Do not send Telegram messages until USER.md has a numeric Chat ID. Do not use telegram:unknown as a target.",
     );
   }
   lines.push("");
