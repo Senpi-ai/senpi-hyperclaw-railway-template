@@ -406,6 +406,38 @@ async function restartGateway() {
 
 let onboardingInProgress = false;
 
+/** Path to file storing env fingerprint after successful auto-onboard (used to detect env changes on redeploy). */
+const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
+  STATE_DIR,
+  ".auto-onboard-env.fingerprint",
+);
+
+/** Hash of env vars that affect auto-onboard config. Redeploy with different values triggers re-onboard. */
+function envFingerprintForOnboard() {
+  const payload = {
+    AI_PROVIDER,
+    AI_API_KEY,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_USERNAME,
+    SENPI_AUTH_TOKEN: process.env.SENPI_AUTH_TOKEN?.trim() || "",
+  };
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(payload), "utf8")
+    .digest("hex");
+}
+
+/** True if config was created by auto-onboard and current env vars differ (user updated Variables and redeployed). */
+function shouldReOnboardDueToEnvChange() {
+  try {
+    const stored = fs.readFileSync(AUTO_ONBOARD_FINGERPRINT_FILE, "utf8").trim();
+    const current = envFingerprintForOnboard();
+    return stored !== "" && current !== stored;
+  } catch {
+    return false; // No stored fingerprint (e.g. manual setup or legacy deploy)
+  }
+}
+
 function canAutoOnboard() {
   return (
     !isConfigured() &&
@@ -744,6 +776,18 @@ async function autoOnboard() {
 
     await restartGateway();
     console.log("[auto-onboard] Gateway started and ready");
+
+    // Store env fingerprint so redeploy with updated Variables triggers re-onboard
+    try {
+      fs.writeFileSync(
+        AUTO_ONBOARD_FINGERPRINT_FILE,
+        envFingerprintForOnboard(),
+        "utf8",
+      );
+      console.log("[auto-onboard] Stored env fingerprint for redeploy detection");
+    } catch (e) {
+      console.warn("[auto-onboard] Could not write fingerprint file:", e.message);
+    }
 
     console.log(
       "[auto-onboard] ========== AUTO-ONBOARDING COMPLETE ==========",
@@ -1726,7 +1770,27 @@ const server = app.listen(PORT, () => {
   console.log(`[wrapper] setup wizard: http://localhost:${PORT}/setup`);
   console.log(`[wrapper] configured: ${isConfigured()}`);
 
-  if (canAutoOnboard()) {
+  // If env vars changed since last auto-onboard (e.g. user fixed wrong keys and redeployed),
+  // remove only the config file and re-onboard so the new values take effect.
+  // We do NOT touch the workspace or memory — only openclaw.json (and the fingerprint file) is removed.
+  if (isConfigured() && shouldReOnboardDueToEnvChange()) {
+    console.log(
+      "[wrapper] Env vars changed since last auto-onboard — re-onboarding with current Variables...",
+    );
+    try {
+      fs.unlinkSync(configPath()); // openclaw.json only; workspace and state (memory, etc.) are preserved
+      try {
+        fs.unlinkSync(AUTO_ONBOARD_FINGERPRINT_FILE);
+      } catch {
+        /* ignore */
+      }
+    } catch (e) {
+      console.error(`[wrapper] Failed to remove old config: ${e.message}`);
+    }
+    autoOnboard().catch((err) => {
+      console.error(`[wrapper] Re-onboard failed: ${err}`);
+    });
+  } else if (canAutoOnboard()) {
     // Zero-touch deployment: auto-configure from environment variables.
     console.log("[wrapper] Auto-onboarding from environment variables...");
     autoOnboard().catch((err) => {
