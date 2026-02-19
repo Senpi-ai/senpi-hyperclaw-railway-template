@@ -1325,7 +1325,12 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   }
 });
 
+// Debug endpoint: only available when OPENCLAW_TEMPLATE_DEBUG=true to avoid
+// leaking internal structure (paths, Node version, token source, commit SHA) in production.
 app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
+  if (!DEBUG) {
+    return res.status(404).json({ error: "Not Found" });
+  }
   const v = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
   const help = await runCmd(
     OPENCLAW_NODE,
