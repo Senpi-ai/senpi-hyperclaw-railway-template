@@ -492,6 +492,7 @@ function canAutoOnboard() {
 async function resolveTelegramAndWriteUserMd() {
   let chatId = "";
   let username = "";
+  let updateList = [];
 
   if (!TELEGRAM_BOT_TOKEN) {
     console.log("[telegram] No TELEGRAM_BOT_TOKEN, skipping USER.md write");
@@ -521,7 +522,7 @@ async function resolveTelegramAndWriteUserMd() {
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`,
         );
         const updates = await updatesRes.json();
-        const updateList = (updates.ok && updates.result) || [];
+        updateList = (updates.ok && updates.result) || [];
 
         for (const update of updateList) {
           const chat = update.message?.chat || update.my_chat_member?.chat;
@@ -546,6 +547,47 @@ async function resolveTelegramAndWriteUserMd() {
               "the user must message the bot first so the chat ID can be discovered.",
           );
         }
+      }
+    }
+
+    // Fallback: if we still don't have a chat_id, use the most recent update from getUpdates.
+    // This allows USER.md to be populated when the user sends /start (or any message) before
+    // the gateway starts. (After the gateway starts it owns Telegram polling, so we only get
+    // one chance — during this pre-gateway resolution.)
+    if (!chatId) {
+      if (updateList.length === 0) {
+        const updatesRes = await fetch(
+          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=50`,
+        );
+        const updates = await updatesRes.json();
+        updateList = (updates.ok && updates.result) || [];
+      }
+      // Use the latest update (last in array) that has a chat
+      for (let i = updateList.length - 1; i >= 0; i--) {
+        const update = updateList[i];
+        const chat =
+          update.message?.chat ||
+          update.edited_message?.chat ||
+          update.my_chat_member?.chat ||
+          update.chat_member?.chat;
+        if (chat?.id) {
+          chatId = String(chat.id);
+          const from =
+            update.message?.from ||
+            update.edited_message?.from ||
+            update.my_chat_member?.from;
+          if (from?.username) username = from.username.replace(/^@/, "").toLowerCase();
+          console.log(
+            `[telegram] Using chat_id from most recent update: ${chatId}` +
+              (username ? ` (@${username})` : ""),
+          );
+          break;
+        }
+      }
+      if (!chatId && updateList.length > 0) {
+        console.warn(
+          "[telegram] getUpdates had updates but none contained a chat id",
+        );
       }
     }
   } catch (err) {

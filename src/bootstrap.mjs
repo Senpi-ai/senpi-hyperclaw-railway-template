@@ -59,7 +59,8 @@ function patchOpenClawJson() {
     agents: {
       defaults: {
         workspace: WORKSPACE_DIR,
-        skipBootstrap: true,
+        // false = run BOOT.md on agent startup (boot-md hook). true = BOOT.md never runs.
+        skipBootstrap: false,
       },
     },
     channels: {
