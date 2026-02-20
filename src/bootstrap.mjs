@@ -63,6 +63,11 @@ function patchOpenClawJson() {
         skipBootstrap: false,
       },
     },
+    gateway: {
+      controlUi: {
+        allowInsecureAuth: true,
+      },
+    },
     channels: {
       telegram: { enabled: true },
     },
