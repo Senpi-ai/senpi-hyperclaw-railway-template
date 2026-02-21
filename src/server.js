@@ -330,6 +330,15 @@ async function startGateway() {
 
   console.log(`[gateway] ========== TOKEN SYNC COMPLETE ==========`);
 
+  // Ensure allowInsecureAuth is set before every gateway start.
+  // doctor --fix or other CLI commands may strip this setting, so we re-apply it here
+  // to guarantee the Control UI works without device pairing (wrapper handles auth).
+  await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true"]),
+  );
+  console.log(`[gateway] Set gateway.controlUi.allowInsecureAuth=true`);
+
   const args = [
     "gateway",
     "run",
