@@ -63,6 +63,15 @@ function patchOpenClawJson() {
         skipBootstrap: false,
       },
     },
+    // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
+    // and other tool calls don't stall waiting for manual approval.
+    // See: https://docs.openclaw.ai/tools/exec
+    tools: {
+      exec: {
+        security: "full",
+        ask: "off",
+      },
+    },
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
