@@ -207,7 +207,7 @@ Edit `buildOnboardArgs()` (src/server.js:442-496) to add new CLI flags or auth p
 - Template must mount a volume at `/data`
 - **Recommended:** set `SETUP_PASSWORD` in Railway Variables so `/setup` and Control UI (/, /openclaw) are accessible. If unset, those routes return 500 and a startup warning is logged.
 - Public networking must be enabled (assigns `*.up.railway.app` domain)
-- Openclaw version is pinned via Docker build arg `OPENCLAW_GIT_REF` (default: `v2026.2.22`). v2026.2.22 includes Gateway/Pairing fixes for loopback (operator scopes, auto-approve scope-upgrade, cron/announce); see [release notes](https://github.com/openclaw/openclaw/releases/tag/v2026.2.22).
+- Openclaw version is pinned via Docker build arg `OPENCLAW_GIT_REF` (default: `v2026.2.12`). We use a pre-2026.2.19 version (e.g. 2026.2.6, 2026.2.9, 2026.2.12) to avoid the scope tightening that causes cron/agent to hit "pairing required"; see [releases](https://github.com/openclaw/openclaw/releases). For 2026.2.22 pairing fixes (loopback operator scopes, auto-approve) use `OPENCLAW_GIT_REF=v2026.2.22`.
 
 ## Serena Semantic Coding
 
