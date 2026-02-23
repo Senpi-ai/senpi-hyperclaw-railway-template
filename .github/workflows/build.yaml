@@ -1,0 +1,91 @@
+name: senpi-hyperclaw build 
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "development/production env"
+        default: "development"
+        type: choice
+        required: true
+        options:
+          - development
+          - production
+
+env:
+  AWS_REGION: us-east-1
+  PUBLIC_ECR_REGISTRY: public.ecr.aws
+  PUBLIC_ECR_ALIAS: n9x7j0j5
+  PUBLIC_ECR_REPOSITORY: senpi-hyperclaw
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  setup-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ github.event.inputs.environment }}
+    steps:
+      - run: echo "null"
+
+  deploy:
+    name: Build & Push
+    needs: [setup-environment]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup-environment.outputs.environment }}
+
+    steps:
+      - name: Echo output
+        run: echo ${{ needs.setup-environment.outputs.environment }}
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: Github
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR Public
+        id: login-public-ecr
+        run: |
+          set -euo pipefail
+          aws ecr-public get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin ${{ env.PUBLIC_ECR_REGISTRY }}
+
+      - name: Build, tag, and push image to Amazon ECR Public
+        id: build-image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Map input to env prefix
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            ENV=production
+          elif [[ "${{ github.event.inputs.environment }}" == "development" ]]; then
+            ENV=development
+          else
+            echo "Unknown environment: ${{ github.event.inputs.environment }}"
+            exit 1
+          fi
+
+          echo "Building with ENV=$ENV"
+
+          IMAGE_TAG_WITH_ENV="${ENV}-${IMAGE_TAG}"
+          IMAGE_URI="${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.PUBLIC_ECR_ALIAS }}/${{ env.PUBLIC_ECR_REPOSITORY }}:${IMAGE_TAG_WITH_ENV}"
+
+          # Build + push (amd64)
+          docker buildx build --platform=linux/amd64 -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+
+          echo "image=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "image_tag_with_env=${IMAGE_TAG_WITH_ENV}" >> "$GITHUB_OUTPUT"
+
+      - name: Print image URI
+        run: |
+          echo "Pushed: ${{ steps.build-image.outputs.image }}"
