@@ -66,14 +66,12 @@ function patchOpenClawJson() {
     // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
     // and other tool calls don't stall waiting for manual approval.
     // See: https://docs.openclaw.ai/tools/exec
+    // Note: tools.fs (workspaceOnly) is only supported in newer OpenClaw; omitted for 2026.2.12 compatibility.
     tools: {
       exec: {
         security: "full",
         ask: "off",
       },
-      // Restrict read/write/edit/apply_patch to workspace only (e.g. /data/workspace).
-      // Prevents agent from touching /openclaw or system paths and avoids ENOENT on inferred paths.
-      fs: { workspaceOnly: true },
     },
     gateway: {
       controlUi: {
@@ -106,6 +104,10 @@ function patchOpenClawJson() {
   };
 
   const merged = deepMerge(cfg, patch);
+  // tools.fs is not supported in OpenClaw 2026.2.12; remove if present (e.g. from prior bootstrap).
+  if (merged.tools && typeof merged.tools === "object") {
+    delete merged.tools.fs;
+  }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
 }
 
