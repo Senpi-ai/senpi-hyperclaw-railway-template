@@ -207,7 +207,7 @@ Edit `buildOnboardArgs()` (src/server.js:442-496) to add new CLI flags or auth p
 - Template must mount a volume at `/data`
 - **Recommended:** set `SETUP_PASSWORD` in Railway Variables so `/setup` and Control UI (/, /openclaw) are accessible. If unset, those routes return 500 and a startup warning is logged.
 - Public networking must be enabled (assigns `*.up.railway.app` domain)
-- Openclaw version is pinned via Docker build arg `OPENCLAW_GIT_REF` (default: `main`)
+- Openclaw version is pinned via Docker build arg `OPENCLAW_GIT_REF` (default: `v2026.2.12`). We use a pre-2026.2.19 version (e.g. 2026.2.6, 2026.2.9, 2026.2.12) to avoid the scope tightening that causes cron/agent to hit "pairing required"; see [releases](https://github.com/openclaw/openclaw/releases). For 2026.2.22 pairing fixes (loopback operator scopes, auto-approve) use `OPENCLAW_GIT_REF=v2026.2.22`.
 
 ## Serena Semantic Coding
 
@@ -239,4 +239,7 @@ This avoids repeatedly reading large files and provides instant context about th
 4. **Discord bots require MESSAGE CONTENT INTENT** → document this in setup wizard (src/server.js:295-298)
 5. **Gateway spawn inherits stdio** → logs appear in wrapper output (src/server.js:134)
 6. **WebSocket auth requires proxy event handlers** → Direct `req.headers` modification doesn't work for WebSocket upgrades with http-proxy; must use `proxyReqWs` event (src/server.js:741) to reliably inject Authorization header
-7. **Control UI requires allowInsecureAuth to bypass pairing** → Set `gateway.controlUi.allowInsecureAuth=true` during onboarding to prevent "disconnected (1008): pairing required" errors (GitHub issue #2284). Wrapper already handles bearer token auth, so device pairing is unnecessary.
+7. **Control UI and headless internal clients** → We set `gateway.controlUi.allowInsecureAuth=true` (Control UI behind proxy) and `gateway.controlUi.dangerouslyDisableDeviceAuth=true` (headless: no device to pair). The latter is required so internal clients (Telegram provider, cron, session WS) connecting from 127.0.0.1 with the token from config are not rejected with `code=1008 reason=connect failed` / "pairing required". Both are set in bootstrap.mjs, onboard.js, gateway.js sync, and setup.js post-onboard.
+8. **"pairing required" / "connect failed" (1008)** → If you still see this after the above: check that `openclaw.json` has `gateway.controlUi.dangerouslyDisableDeviceAuth: true` and restart the gateway (redeploy or restart the process). Wrapper logs `[ws-upgrade]` only for browser→wrapper→gateway; internal client failures appear in gateway logs as `[ws] closed before connect ... code=1008 reason=connect failed`.
+9. **`[tools] read failed: ENOENT ... access '/openclaw/src/...'`** → The agent tried to read a path outside the workspace (e.g. OpenClaw source). Bootstrap sets `tools.fs.workspaceOnly: true` so read/write/edit are limited to the workspace (e.g. `/data/workspace`). Redeploy so the patched config is applied; then the agent won't hit ENOENT on system paths.
+10. **`[telegram] sendChatAction failed: Network request for 'sendChatAction' failed!`** → Telegram API call (e.g. "typing…" indicator) failed. Usually transient (network, rate limit, or egress). If persistent, check TELEGRAM_BOT_TOKEN and egress to api.telegram.org. Chat delivery can still work when sendChatAction fails.

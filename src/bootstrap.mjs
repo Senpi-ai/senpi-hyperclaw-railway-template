@@ -66,6 +66,7 @@ function patchOpenClawJson() {
     // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
     // and other tool calls don't stall waiting for manual approval.
     // See: https://docs.openclaw.ai/tools/exec
+    // Note: tools.fs (workspaceOnly) is only supported in newer OpenClaw; omitted for 2026.2.12 compatibility.
     tools: {
       exec: {
         security: "full",
@@ -75,7 +76,12 @@ function patchOpenClawJson() {
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
+        // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
+        // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
+        dangerouslyDisableDeviceAuth: true,
       },
+      // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
+      trustedProxies: ["127.0.0.1", "::1"],
     },
     channels: {
       telegram: { enabled: true },
@@ -98,6 +104,10 @@ function patchOpenClawJson() {
   };
 
   const merged = deepMerge(cfg, patch);
+  // tools.fs is not supported in OpenClaw 2026.2.12; remove if present (e.g. from prior bootstrap).
+  if (merged.tools && typeof merged.tools === "object") {
+    delete merged.tools.fs;
+  }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
 }
 

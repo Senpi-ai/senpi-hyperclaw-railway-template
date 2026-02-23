@@ -24,6 +24,20 @@ This is your cheat sheet. Environment-specific stuff that doesn't belong in skil
 - `grep` — fallback if needed
 - **NOT installed:** `jq` — use `node -e` instead
 
+## Cron (Gateway scheduler)
+
+When calling the **cron.add** tool, use this shape. The gateway rejects `payload.message` and `payload.sessionTarget`; it requires `payload.text` and top-level `sessionTarget`.
+
+- **Main session** (system event): `sessionTarget: "main"`, `payload: { "kind": "systemEvent", "text": "Your reminder or prompt text" }`.
+- **Isolated session** (dedicated agent turn): `sessionTarget: "isolated"`, `payload: { "kind": "agentTurn", "text": "Your prompt text" }`.
+
+Put `sessionTarget` and `schedule` at the top level of the params, not inside `payload`. Use `payload.text` only (do not use `payload.message`).
+
+Example one-shot main-session job:
+```json
+{ "name": "Reminder", "schedule": { "kind": "at", "at": "2026-02-01T16:00:00Z" }, "sessionTarget": "main", "wakeMode": "now", "payload": { "kind": "systemEvent", "text": "Reminder text" }, "deleteAfterRun": true }
+```
+
 ## Token Refresh
 
 If Senpi calls fail with an auth error, the token has expired. Tell the user to provide a fresh token, then run:
