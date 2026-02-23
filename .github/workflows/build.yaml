@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   setup-environment:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       environment: ${{ github.event.inputs.environment }}
     steps:
