@@ -139,9 +139,16 @@ export async function startGateway(gatewayToken) {
       "true",
     ])
   );
+  const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+  const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
   console.log(
-    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless)`
+    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
   );
+  if (devAuth !== true) {
+    console.warn(
+      `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+    );
+  }
 
   const args = [
     "gateway",

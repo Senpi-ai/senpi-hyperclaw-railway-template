@@ -12,7 +12,7 @@ import {
   SETUP_PASSWORD,
 } from "./lib/config.js";
 import { resolveGatewayToken } from "./lib/auth.js";
-import { getGatewayProcess, ensureGatewayRunning } from "./gateway.js";
+import { getGatewayProcess, ensureGatewayRunning, restartGateway } from "./gateway.js";
 import {
   autoOnboard,
   canAutoOnboard,
@@ -94,7 +94,8 @@ const server = app.listen(PORT, () => {
     } catch (err) {
       console.error(`[wrapper] Bootstrap sync error (non-fatal): ${err}`);
     }
-    ensureGatewayRunning(OPENCLAW_GATEWAY_TOKEN).catch((err) => {
+    // Restart gateway so it picks up bootstrap patch (e.g. dangerouslyDisableDeviceAuth for cron without pairing)
+    restartGateway(OPENCLAW_GATEWAY_TOKEN).catch((err) => {
       console.error(`[wrapper] Gateway startup failed: ${err}`);
     });
   }
