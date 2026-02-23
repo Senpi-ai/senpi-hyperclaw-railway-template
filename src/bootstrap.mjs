@@ -76,6 +76,8 @@ function patchOpenClawJson() {
       controlUi: {
         allowInsecureAuth: true,
       },
+      // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
+      trustedProxies: ["127.0.0.1", "::1"],
     },
     channels: {
       telegram: { enabled: true },
