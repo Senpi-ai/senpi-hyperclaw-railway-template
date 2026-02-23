@@ -71,6 +71,9 @@ function patchOpenClawJson() {
         security: "full",
         ask: "off",
       },
+      // Restrict read/write/edit/apply_patch to workspace only (e.g. /data/workspace).
+      // Prevents agent from touching /openclaw or system paths and avoids ENOENT on inferred paths.
+      fs: { workspaceOnly: true },
     },
     gateway: {
       controlUi: {
