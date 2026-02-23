@@ -305,6 +305,16 @@ export function createSetupRouter() {
             "config",
             "set",
             "--json",
+            "gateway.controlUi.dangerouslyDisableDeviceAuth",
+            "true",
+          ])
+        );
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs([
+            "config",
+            "set",
+            "--json",
             "gateway.trustedProxies",
             JSON.stringify(["127.0.0.1", "::1"]),
           ])

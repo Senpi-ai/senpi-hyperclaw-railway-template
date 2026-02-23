@@ -129,7 +129,19 @@ export async function startGateway(gatewayToken) {
       "true",
     ])
   );
-  console.log(`[gateway] Set gateway.controlUi.allowInsecureAuth=true`);
+  await runCmd(
+    OPENCLAW_NODE,
+    clawArgs([
+      "config",
+      "set",
+      "--json",
+      "gateway.controlUi.dangerouslyDisableDeviceAuth",
+      "true",
+    ])
+  );
+  console.log(
+    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless)`
+  );
 
   const args = [
     "gateway",

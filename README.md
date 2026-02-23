@@ -11,6 +11,7 @@ This repo packages **Openclaw** for Railway with **zero-touch auto-configuration
 - Persistent state via **Railway Volume** (config/credentials/memory survive redeploys)
 - One-click **Export backup** (migrate off Railway later)
 - Fallback **Setup Wizard** at `/setup` for manual configuration
+- **Security:** See [SECURITY.md](SECURITY.md) for an audit against [OpenClaw’s security guidance](https://docs.openclaw.ai/gateway/security).
 
 ## How it works
 

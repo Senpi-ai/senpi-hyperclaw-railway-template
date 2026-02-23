@@ -75,6 +75,9 @@ function patchOpenClawJson() {
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
+        // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
+        // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
+        dangerouslyDisableDeviceAuth: true,
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],

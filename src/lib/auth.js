@@ -18,6 +18,9 @@ export function tokenLogSafe(token) {
     .slice(0, 8);
 }
 
+/** Minimum recommended length for gateway token (aligns with openclaw security audit token_too_short). */
+const MIN_GATEWAY_TOKEN_LENGTH = 32;
+
 /** Constant-time string comparison to mitigate timing attacks on password auth. */
 export function secureCompare(a, b) {
   const aa = Buffer.from(String(a ?? ""), "utf8");
@@ -54,6 +57,11 @@ export function resolveGatewayToken(stateDir = STATE_DIR) {
     console.log(
       `[token]   Fingerprint: ${tokenLogSafe(envTok)} (len: ${envTok.length})`
     );
+    if (envTok.length < MIN_GATEWAY_TOKEN_LENGTH) {
+      console.warn(
+        `[token] ⚠️  Token length ${envTok.length} < ${MIN_GATEWAY_TOKEN_LENGTH}; use a longer token (e.g. openssl rand -hex 32) for production.`
+      );
+    }
     return envTok;
   }
 
@@ -68,6 +76,11 @@ export function resolveGatewayToken(stateDir = STATE_DIR) {
       console.log(
         `[token]   Fingerprint: ${tokenLogSafe(existing)} (len: ${existing.length})`
       );
+      if (existing.length < MIN_GATEWAY_TOKEN_LENGTH) {
+        console.warn(
+          `[token] ⚠️  Token length ${existing.length} < ${MIN_GATEWAY_TOKEN_LENGTH}; consider regenerating (e.g. set OPENCLAW_GATEWAY_TOKEN to openssl rand -hex 32).`
+        );
+      }
       return existing;
     }
   } catch (err) {
