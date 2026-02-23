@@ -83,7 +83,7 @@ jobs:
           docker push "${IMAGE_URI}"
 
           echo "image=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
-
+    
       - name: Print image URI
         run: |
           echo "Pushed: ${{ steps.build-image.outputs.image }}"
