@@ -20,8 +20,8 @@ RUN corepack enable
 
 WORKDIR /openclaw
 
-# Pin to a known ref (tag/branch). If it doesn't exist, fall back to main.
-ARG OPENCLAW_GIT_REF=v2026.2.19
+# Pin to a known ref (tag/branch). v2026.2.22+ improves loopback pairing/scope handling.
+ARG OPENCLAW_GIT_REF=v2026.2.22
 RUN git clone --depth 1 --branch "${OPENCLAW_GIT_REF}" https://github.com/openclaw/openclaw.git .
 
 # Patch: relax version requirements for packages that may reference unpublished versions.
@@ -72,7 +72,7 @@ RUN npm install -g mcporter@0.7.3 mcp-remote@0.1.38
 # Vendor mcporter skill from OpenClaw repo into image
 RUN set -eux; \
   mkdir -p /opt/openclaw-skills; \
-  git clone --depth 1 --branch v2026.2.19 https://github.com/openclaw/openclaw.git /tmp/openclaw; \
+  git clone --depth 1 --branch v2026.2.22 https://github.com/openclaw/openclaw.git /tmp/openclaw; \
   cp -r /tmp/openclaw/skills/mcporter /opt/openclaw-skills/; \
   rm -rf /tmp/openclaw
 
