@@ -29,7 +29,10 @@ import {
 } from "../onboard.js";
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 
-const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+/** Lazy: server.js sets process.env.OPENCLAW_GATEWAY_TOKEN after imports. */
+function getGatewayToken() {
+  return process.env.OPENCLAW_GATEWAY_TOKEN || "";
+}
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
 
 const AUTH_GROUPS = [
@@ -156,7 +159,7 @@ export function createSetupRouter() {
 
   router.get("/api/gateway-token", requireSetupAuth, (_req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json({ token: gatewayToken });
+    res.json({ token: getGatewayToken() });
   });
 
   router.get("/api/status", requireSetupAuth, async (_req, res) => {
@@ -185,7 +188,7 @@ export function createSetupRouter() {
       }
 
       if (isConfigured()) {
-        await ensureGatewayRunning(gatewayToken);
+        await ensureGatewayRunning(getGatewayToken());
         return res.json({
           ok: true,
           output:
@@ -197,6 +200,7 @@ export function createSetupRouter() {
       fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
       const payload = req.body || {};
+      const gatewayToken = getGatewayToken();
       const onboardArgs = buildOnboardArgs(payload, gatewayToken);
 
       console.log(`[onboard] ========== TOKEN DIAGNOSTIC START ==========`);
@@ -421,7 +425,7 @@ export function createSetupRouter() {
 
         await resolveTelegramAndWriteUserMd();
         bootstrapOpenClaw();
-        await restartGateway(gatewayToken);
+        await restartGateway(getGatewayToken());
       }
 
       return res.status(ok ? 200 : 500).json({

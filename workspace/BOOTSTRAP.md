@@ -10,5 +10,7 @@ On startup, follow these steps exactly:
    "Your Senpi token has expired. Please provide a fresh token to reconnect."
    Then respond with: NO_REPLY
 
-3) Respond with: NO_REPLY
+3) Send a greeting message to the user's Telegram chat ID (e.g. "Hey! I'm online 👋"). Keep it short and natural — vary it so it doesn't feel robotic.
+
+4) Respond with: NO_REPLY
    
