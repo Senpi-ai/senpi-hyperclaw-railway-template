@@ -202,13 +202,6 @@ Edit `buildOnboardArgs()` (src/server.js:442-496) to add new CLI flags or auth p
 2. Add config-writing logic in `/setup/api/run` handler (src/server.js)
 3. Update client JS to collect the fields (src/public/setup-app.js)
 
-### OpenClaw docs (references)
-
-- **[Streaming and chunking](https://docs.openclaw.ai/concepts/streaming)** — Preview vs block streaming, `streamMode`/`streaming`, `blockStreaming`, coalescing (`blockStreamingCoalesce`), chunk bounds (`blockStreamingChunk`), `blockStreamingBreak` (`text_end` / `message_end`). Per-channel: `channels.<channel>.streaming`, `*.blockStreaming`. Telegram: preview skipped when block streaming is on; uses `sendMessage` + `editMessageText`.
-- [Telegram channel](https://docs.openclaw.ai/channels/telegram) — Channel-specific options.
-- [Configuration reference](https://docs.openclaw.ai/gateway/configuration-reference) — Full config keys.
-- [Docs index](https://docs.openclaw.ai/llms.txt) — Discover all pages.
-
 ## Railway Deployment Notes
 
 - Template must mount a volume at `/data`
@@ -249,5 +242,4 @@ This avoids repeatedly reading large files and provides instant context about th
 7. **Control UI and headless internal clients** → We set `gateway.controlUi.allowInsecureAuth=true` (Control UI behind proxy) and `gateway.controlUi.dangerouslyDisableDeviceAuth=true` (headless: no device to pair). The latter is required so internal clients (Telegram provider, cron, session WS) connecting from 127.0.0.1 with the token from config are not rejected with `code=1008 reason=connect failed` / "pairing required". Both are set in bootstrap.mjs, onboard.js, gateway.js sync, and setup.js post-onboard.
 8. **"pairing required" / "connect failed" (1008)** → If you still see this after the above: check that `openclaw.json` has `gateway.controlUi.dangerouslyDisableDeviceAuth: true` and restart the gateway (redeploy or restart the process). Wrapper logs `[ws-upgrade]` only for browser→wrapper→gateway; internal client failures appear in gateway logs as `[ws] closed before connect ... code=1008 reason=connect failed`.
 9. **`[tools] read failed: ENOENT ... access '/openclaw/src/...'`** → The agent tried to read a path outside the workspace (e.g. OpenClaw source). Bootstrap sets `tools.fs.workspaceOnly: true` so read/write/edit are limited to the workspace (e.g. `/data/workspace`). Redeploy so the patched config is applied; then the agent won't hit ENOENT on system paths.
-10. **Telegram streaming (slow or not visible)** → We set `streamMode: "progress"` (progress/status preview, then final answer) and `blockStreaming: true` (progressive message bubbles). If streaming still feels off: (1) **Older OpenClaw** (e.g. v2026.2.12) may coalesce output (e.g. ~1500 chars) before sending, so the first chunk can feel delayed; newer releases may improve this. (2) **Preview only**: without `blockStreaming: true`, only the preview layer runs (send + editMessageText); with it, blocks are sent as separate messages. (3) Real-time reasoning in Telegram requires Topics + Bot API 9.3+; in regular DMs only block/preview streaming applies. See [streaming docs](https://docs.openclaw.ai/concepts/streaming) and [Telegram channel](https://docs.openclaw.ai/channels/telegram).
-11. **`[telegram] sendChatAction failed: Network request for 'sendChatAction' failed!`** → Telegram API call (e.g. "typing…" indicator) failed. Usually transient (network, rate limit, or egress). If persistent, check TELEGRAM_BOT_TOKEN and egress to api.telegram.org. Chat delivery can still work when sendChatAction fails.
+10. **`[telegram] sendChatAction failed: Network request for 'sendChatAction' failed!`** → Telegram API call (e.g. "typing…" indicator) failed. Usually transient (network, rate limit, or egress). If persistent, check TELEGRAM_BOT_TOKEN and egress to api.telegram.org. Chat delivery can still work when sendChatAction fails.

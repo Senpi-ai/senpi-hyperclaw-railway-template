@@ -342,8 +342,7 @@ export function createSetupRouter() {
               dmPolicy: "pairing",
               botToken: token,
               groupPolicy: "allowlist",
-              streamMode: "progress",
-              blockStreaming: true,
+              streamMode: "partial",
             };
             const set = await runCmd(
               OPENCLAW_NODE,

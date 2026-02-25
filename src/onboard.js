@@ -462,8 +462,7 @@ export async function autoOnboard(gatewayToken) {
           allowFrom: ["*"],
           botToken: TELEGRAM_BOT_TOKEN,
           groupPolicy: "allowlist",
-          streamMode: "progress",
-          blockStreaming: true,
+          streamMode: "partial",
         };
         const set = await runCmd(
           OPENCLAW_NODE,
