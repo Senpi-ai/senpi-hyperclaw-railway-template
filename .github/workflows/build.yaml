@@ -75,15 +75,15 @@ jobs:
           fi
 
           echo "Building with ENV=$ENV"
-
-          IMAGE_URI="${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.PUBLIC_ECR_ALIAS }}/${{ env.PUBLIC_ECR_REPOSITORY }}:${ENV}"
+          IMAGE_TAG_WITH_ENV="${ENV}-${IMAGE_TAG}"
+          IMAGE_URI="${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.PUBLIC_ECR_ALIAS }}/${{ env.PUBLIC_ECR_REPOSITORY }}:${IMAGE_TAG_WITH_ENV}"
 
           # Build + push (amd64)
           docker buildx build --platform=linux/amd64 -t "${IMAGE_URI}" .
           docker push "${IMAGE_URI}"
 
           echo "image=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
-
+          echo "image_tag_with_env=${IMAGE_TAG_WITH_ENV}" >> "$GITHUB_OUTPUT"
       - name: Print image URI
         run: |
           echo "Pushed: ${{ steps.build-image.outputs.image }}"
