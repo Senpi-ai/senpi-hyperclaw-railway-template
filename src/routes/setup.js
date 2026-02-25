@@ -215,7 +215,8 @@ export function createSetupRouter() {
       const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
 
       let extra = "";
-      const ok = onboard.code === 0 && isConfigured();
+      let ok = onboard.code === 0 && isConfigured();
+      let setupFailed = false;
 
       if (ok) {
         try {
@@ -265,7 +266,8 @@ export function createSetupRouter() {
           `[onboard] config set gateway.auth.token result: exit code ${setTokenResult.code}`
         );
         if (setTokenResult.code !== 0) {
-          extra += `\n[WARNING] Failed to set gateway token in config: ${setTokenResult.output}\n`;
+          setupFailed = true;
+          extra += `\n[ERROR] Failed to set gateway token in config: ${setTokenResult.output}\n`;
         }
 
         try {
@@ -339,10 +341,11 @@ export function createSetupRouter() {
             const token = payload.telegramToken.trim();
             const cfgObj = {
               enabled: true,
-              dmPolicy: "pairing",
+              dmPolicy: "open",
               botToken: token,
               groupPolicy: "allowlist",
               streamMode: "partial",
+              blockStreaming: true,
             };
             const set = await runCmd(
               OPENCLAW_NODE,
@@ -354,22 +357,36 @@ export function createSetupRouter() {
                 JSON.stringify(cfgObj),
               ])
             );
-            await runCmd(
-              OPENCLAW_NODE,
-              clawArgs([
-                "config",
-                "set",
-                "--json",
-                "plugins.entries.telegram",
-                JSON.stringify({ enabled: true }),
-              ])
-            );
-            const doctor = await runCmd(
-              OPENCLAW_NODE,
-              clawArgs(["doctor", "--fix"])
-            );
+            if (set.code !== 0) {
+              setupFailed = true;
+              extra += `\n[ERROR] Telegram config validation failed: ${set.output}\n`;
+            } else {
+              const setPlugin = await runCmd(
+                OPENCLAW_NODE,
+                clawArgs([
+                  "config",
+                  "set",
+                  "--json",
+                  "plugins.entries.telegram",
+                  JSON.stringify({ enabled: true }),
+                ])
+              );
+              if (setPlugin.code !== 0) {
+                setupFailed = true;
+                extra += `\n[ERROR] Telegram plugin config failed: ${setPlugin.output}\n`;
+              }
+            }
+            if (!setupFailed) {
+              const doctor = await runCmd(
+                OPENCLAW_NODE,
+                clawArgs(["doctor", "--fix"])
+              );
+              if (doctor.code !== 0) {
+                setupFailed = true;
+                extra += `\n[ERROR] openclaw doctor failed: ${doctor.output}\n`;
+              }
+            }
             extra += `\n[telegram config] exit=${set.code}\n`;
-            extra += `\n[telegram doctor] exit=${doctor.code}\n`;
           }
         }
 
@@ -395,6 +412,10 @@ export function createSetupRouter() {
                 JSON.stringify(cfgObj),
               ])
             );
+            if (set.code !== 0) {
+              setupFailed = true;
+              extra += `\n[ERROR] Discord config validation failed: ${set.output}\n`;
+            }
             extra += `\n[discord config] exit=${set.code}\n`;
           }
         }
@@ -419,13 +440,33 @@ export function createSetupRouter() {
                 JSON.stringify(cfgObj),
               ])
             );
+            if (set.code !== 0) {
+              setupFailed = true;
+              extra += `\n[ERROR] Slack config validation failed: ${set.output}\n`;
+            }
             extra += `\n[slack config] exit=${set.code}\n`;
           }
         }
 
+        if (setupFailed) {
+          return res.status(500).json({
+            ok: false,
+            output: `${onboard.output}${extra}\nSetup did not complete due to errors above.`,
+          });
+        }
+
         await resolveTelegramAndWriteUserMd();
         bootstrapOpenClaw();
-        await restartGateway(getGatewayToken());
+        try {
+          const gatewayResult = await restartGateway(getGatewayToken());
+          if (!gatewayResult.ok) {
+            ok = false;
+            extra += `\n[ERROR] Gateway failed to start: ${gatewayResult.reason || "unknown"}\n`;
+          }
+        } catch (err) {
+          ok = false;
+          extra += `\n[ERROR] Gateway failed to start: ${err?.message ?? String(err)}\n`;
+        }
       }
 
       return res.status(ok ? 200 : 500).json({
