@@ -45,6 +45,7 @@ RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    gosu \
     build-essential \
     gcc \
     g++ \
@@ -103,9 +104,24 @@ COPY workspace/BOOTSTRAP.md /opt/workspace-defaults/BOOTSTRAP.md
 COPY workspace/TOOLS.md /opt/workspace-defaults/TOOLS.md
 
 COPY src ./src
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
+# Create openclaw user, set up directories
+RUN useradd -m -s /bin/bash openclaw \
+  && chown -R openclaw:openclaw /app \
+  && mkdir -p /data && chown openclaw:openclaw /data
+
+# Environment
+ENV OPENCLAW_STATE_DIR=/data/.openclaw
+ENV OPENCLAW_WORKSPACE_DIR=/data/workspace
 ENV PORT=8080
 ENV MCPORTER_CONFIG="/data/.openclaw/config/mcporter.json"
+
 EXPOSE 8080
-CMD ["node", "src/server.js"]
-#CMD ["bash", "-lc", "node src/bootstrap.js && node src/server.js"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD curl -f http://localhost:8080/setup/healthz || exit 1
+
+ENTRYPOINT ["./entrypoint.sh"]
