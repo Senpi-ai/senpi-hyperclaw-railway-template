@@ -83,6 +83,16 @@ If you prefer manual configuration or don't set `AI_PROVIDER`/`AI_API_KEY`, the 
 2. Visit `https://<your-app>.up.railway.app/setup`
 3. Complete the wizard to choose your AI provider, enter API keys, and configure channels
 
+## Senpi user onboarding & first trade
+
+The workspace is preloaded with prompts that guide **end users** (people chatting with your bot) through Senpi onboarding and their first trade:
+
+- **State-driven flow:** The agent checks `$SENPI_STATE_DIR/state.json` (defaults to $HOME/.senpi) and routes users by state: FRESH → ONBOARDING → UNFUNDED → AWAITING_FIRST_TRADE → READY.
+- **First trade guide:** When the user is ready, the agent walks them through discovery, opening a small position ($50, 3x), and closing, then suggests skills (DSL, WOLF, Whale Index, etc.).
+- **Skills:** Users can list and install skills via `npx skills add Senpi-ai/senpi-skills --list` and `npx skills add Senpi-ai/senpi-skills --skill <skill-name> -a openclaw -y`.
+
+See [ONBOARDING_GUIDE.md](ONBOARDING_GUIDE.md) and [docs/ONBOARDING_ARCHITECTURE.md](docs/ONBOARDING_ARCHITECTURE.md) for the full design.
+
 ## Local smoke test
 
 ```bash

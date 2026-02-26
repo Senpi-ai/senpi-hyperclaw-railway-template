@@ -17,3 +17,5 @@ npm-debug.log*
 .claude/
 .serena/
 .tmpdata/
+.memory-bank/
+.cursor/
