@@ -169,12 +169,12 @@ export async function startGateway(gatewayToken) {
       "config",
       "set",
       "--json",
-      "gateway.controlUi.dangerouslyDisableDeviceAuth",
+      "gateway.dangerouslyDisableDeviceAuth",
       "true",
     ])
   );
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
-  const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
+  const devAuth = verify?.gateway?.dangerouslyDisableDeviceAuth;
   console.log(
     `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
   );
