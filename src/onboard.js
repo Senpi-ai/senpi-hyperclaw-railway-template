@@ -11,6 +11,7 @@ import {
   WORKSPACE_DIR,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_USERNAME,
+  TELEGRAM_USER_ID,
   AI_PROVIDER,
   AI_API_KEY,
   configPath,
@@ -456,10 +457,14 @@ export async function autoOnboard(gatewayToken) {
           "[auto-onboard] Telegram not supported by this build, skipping"
         );
       } else {
+        const allowFrom =
+          TELEGRAM_USER_ID && /^\d+$/.test(TELEGRAM_USER_ID)
+            ? [TELEGRAM_USER_ID]
+            : ["*"];
         const cfgObj = {
           enabled: true,
-          dmPolicy: "open",
-          allowFrom: ["*"],
+          dmPolicy: "allowlist",
+          allowFrom,
           botToken: TELEGRAM_BOT_TOKEN,
           groupPolicy: "allowlist",
           streamMode: "partial",
