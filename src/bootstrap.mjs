@@ -3,6 +3,13 @@ import path from "node:path";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
+const PUBLIC_HOST =
+  (process.env.OPENCLAW_PUBLIC_URL || "").trim() ||
+  (process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
+const PUBLIC_URL =
+  PUBLIC_HOST && !/^https?:\/\//i.test(PUBLIC_HOST)
+    ? `https://${PUBLIC_HOST}`
+    : PUBLIC_HOST || "";
 
 // Config path — MCPORTER_CONFIG is set as a Railway env var so every process
 // in the container (wrapper, gateway, agent, tools) can find it.
@@ -104,6 +111,20 @@ function patchOpenClawJson() {
   };
 
   const merged = deepMerge(cfg, patch);
+  // Configure device-pair plugin for /pair fallback when we know the public URL.
+  if (PUBLIC_URL) {
+    merged.plugins = merged.plugins || {};
+    merged.plugins.entries = merged.plugins.entries || {};
+    const existing = merged.plugins.entries["device-pair"] || {};
+    merged.plugins.entries["device-pair"] = {
+      ...existing,
+      enabled: true,
+      config: {
+        ...(existing.config || {}),
+        publicUrl: PUBLIC_URL,
+      },
+    };
+  }
   // tools.fs is not supported in OpenClaw 2026.2.12; remove if present (e.g. from prior bootstrap).
   if (merged.tools && typeof merged.tools === "object") {
     delete merged.tools.fs;

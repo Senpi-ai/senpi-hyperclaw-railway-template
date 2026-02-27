@@ -20,6 +20,7 @@ import {
   isOnboardingInProgress,
   AUTO_ONBOARD_FINGERPRINT_FILE,
 } from "./onboard.js";
+import { autoApprovePendingOperatorDevices } from "./lib/deviceAuth.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { createSetupRouter } from "./routes/setup.js";
 import {
@@ -98,6 +99,23 @@ const server = app.listen(PORT, () => {
     restartGateway(OPENCLAW_GATEWAY_TOKEN).catch((err) => {
       console.error(`[wrapper] Gateway startup failed: ${err}`);
     });
+  }
+
+  // On newer OpenClaw builds (e.g. v2026.2.26), internal loopback operator
+  // devices may still require pairing even with dangerouslyDisableDeviceAuth.
+  // Try to auto-approve the latest pending loopback operator device shortly
+  // after startup so cron/sessions don't get stuck on "pairing required".
+  if (isConfigured()) {
+    const schedule = (ms) =>
+      setTimeout(() => {
+        autoApprovePendingOperatorDevices().catch((err) => {
+          console.error(
+            `[wrapper] autoApprovePendingOperatorDevices failed: ${err}`
+          );
+        });
+      }, ms);
+    schedule(6000);
+    schedule(16000);
   }
 });
 
