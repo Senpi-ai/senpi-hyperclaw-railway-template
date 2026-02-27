@@ -11,4 +11,3 @@ On startup, follow these steps exactly:
    Then respond with: NO_REPLY
 
 3) Respond with: NO_REPLY
-   

@@ -100,6 +100,7 @@ RUN mv /usr/bin/rg /usr/bin/rg-real \
 COPY workspace/AGENTS.md /opt/workspace-defaults/AGENTS.md
 COPY workspace/SOUL.md /opt/workspace-defaults/SOUL.md
 COPY workspace/BOOTSTRAP.md /opt/workspace-defaults/BOOTSTRAP.md
+COPY workspace/BOOT.md /opt/workspace-defaults/BOOT.md
 COPY workspace/TOOLS.md /opt/workspace-defaults/TOOLS.md
 
 COPY src ./src
