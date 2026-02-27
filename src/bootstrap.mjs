@@ -169,7 +169,6 @@ const MANAGED_WORKSPACE_FILES = new Set([
   "SOUL.md",
   "BOOT.md",
   "TOOLS.md",
-  "MEMORY.md",
 ]);
 
 function seedWorkspaceFiles() {
