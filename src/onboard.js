@@ -429,7 +429,7 @@ export async function autoOnboard(gatewayToken) {
         "config",
         "set",
         "--json",
-        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        "gateway.dangerouslyDisableDeviceAuth",
         "true",
       ])
     );
