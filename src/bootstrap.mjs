@@ -301,6 +301,28 @@ function seedWorkspaceFiles() {
   }
 }
 
+/**
+ * Ensure ~/.config/senpi/state.json exists with a default FRESH state.
+ *
+ * BOOT.md runs on every agent startup and reads this file to determine onboarding
+ * state. If the file or its parent directory is absent, the openclaw `read` tool
+ * throws ENOENT at the I/O layer (logged as "[tools] read failed: ENOENT ...") before
+ * the agent can handle it gracefully — and this repeats for every agent session.
+ *
+ * Creating the file at bootstrap time eliminates the ENOENT entirely:
+ * - The agent reads it successfully and gets state = "FRESH" (not READY → onboarding).
+ * - When Senpi later writes the real state (e.g. READY), this file is overwritten.
+ * - We never overwrite an existing file, so real Senpi state is always preserved.
+ */
+function ensureSenpiStateFile() {
+  const senpiDir = path.join(process.env.HOME || "~", ".config", "senpi");
+  const senpiStatePath = path.join(senpiDir, "state.json");
+  ensureDir(senpiDir);
+  if (!exists(senpiStatePath)) {
+    fs.writeFileSync(senpiStatePath, JSON.stringify({ state: "FRESH" }, null, 2));
+  }
+}
+
 export function bootstrapOpenClaw() {
   ensureDir(STATE_DIR);
   ensureDir(WORKSPACE_DIR);
@@ -321,6 +343,7 @@ export function bootstrapOpenClaw() {
     path.join(STATE_SKILLS_DIR, "mcporter"),
   );
 
+  ensureSenpiStateFile();
   writeMcporterConfig();
   seedWorkspaceFiles();
   patchOpenClawJson();
