@@ -196,6 +196,31 @@ function patchOpenClawJson() {
   // User customizations (e.g. cacheRetention, temperature) take precedence.
   merged.agents.defaults.models = { ...DESIRED_MODELS, ...existingModels };
 
+  // Set default primary model based on which provider API key is configured.
+  const PROVIDER_DEFAULTS = [
+    { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-6" },
+    { key: "OPENAI_API_KEY", model: "openai/gpt-5.2" },
+    { key: "GEMINI_API_KEY", model: "google/gemini-3-pro-preview" },
+    { key: "XAI_API_KEY", model: "xai/grok-3" },
+    { key: "MISTRAL_API_KEY", model: "mistral/mistral-large-latest" },
+    { key: "GROQ_API_KEY", model: "groq/llama-3.3-70b" },
+    { key: "TOGETHER_API_KEY", model: "together/moonshotai/Kimi-K2.5" },
+    { key: "ZAI_API_KEY", model: "zai/glm-5" },
+    { key: "MOONSHOT_API_KEY", model: "moonshot/kimi-k2.5" },
+    { key: "VENICE_API_KEY", model: "venice/llama-3.3-70b" },
+    { key: "OPENROUTER_API_KEY", model: "openrouter/anthropic/claude-sonnet-4-5" },
+  ];
+  const available = PROVIDER_DEFAULTS.filter((p) => process.env[p.key]?.trim());
+  if (available.length > 0) {
+    merged.agents.defaults.model = {
+      primary: available[0].model,
+      fallbacks: available.slice(1).map((p) => p.model),
+    };
+    console.log(
+      `[bootstrap] Default model: ${available[0].model} (fallbacks: ${available.slice(1).map((p) => p.model).join(", ") || "none"})`
+    );
+  }
+
   // tools.fs is not supported in OpenClaw 2026.2.12; remove if present (e.g. from prior bootstrap).
   if (merged.tools && typeof merged.tools === "object") {
     delete merged.tools.fs;
