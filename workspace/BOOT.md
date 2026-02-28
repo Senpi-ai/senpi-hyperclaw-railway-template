@@ -6,9 +6,10 @@ On agent startup, do the following in order.
 
 ### 1. Check Senpi State
 
-- **State file:** `~/.config/senpi/state.json` (SENPI_STATE_DIR defaults to `$HOME/.senpi`).
-- If the file does not exist → treat state as not READY.
-- If the file exists → read the `state` field (e.g. `READY`, `ONBOARDING`, `UNFUNDED`, `AWAITING_FIRST_TRADE`, `FAILED`).
+- **State file path:** `~/.config/senpi/state.json`
+- The bootstrap process ensures this file exists (default state: `FRESH`). **Read it directly.**
+- Use the `state` field: `READY` means skip onboarding; all other values (`FRESH`, `ONBOARDING`, `UNFUNDED`, `AWAITING_FIRST_TRADE`, `FAILED`) mean proceed to onboarding.
+- **Guardrail (defensive fallback):** If for any reason the file or its parent directory does not exist (e.g. very first container start before bootstrap ran), treat state as **not READY** — do not throw or surface an error. Never treat a missing file as a failure.
 
 ### 2. If State Is Not READY
 
