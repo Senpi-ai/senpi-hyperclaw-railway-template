@@ -4,7 +4,7 @@ On startup, follow these steps in order.
 
 ## 1. Check Senpi State
 
-- **State file path:** `~/.config/senpi/state.json`
+- **State file path:** `$SENPI_STATE_DIR/state.json` (if `SENPI_STATE_DIR` is not set, use `~/.config/senpi` as the default).
 - The bootstrap process ensures this file exists (default state: `FRESH`). **Read it directly.**
 - Use the `state` field: `READY` means skip onboarding; all other values (`FRESH`, `ONBOARDING`, `UNFUNDED`, `AWAITING_FIRST_TRADE`, `FAILED`) mean proceed to onboarding.
 - **Guardrail (defensive fallback):** If for any reason the file or its parent directory does not exist, or the read tool returns an error (e.g. ENOENT), treat state as **not READY** — do not throw or surface an error. Never treat a missing file or a read failure as a fatal error.
