@@ -61,6 +61,10 @@ function patchOpenClawJson() {
         workspace: WORKSPACE_DIR,
         // false = run BOOT.md on agent startup (boot-md hook). true = BOOT.md never runs.
         skipBootstrap: false,
+        // Skills with many crons easily exceed the default 4/8 limits, causing
+        // sessions to queue instead of running in parallel.
+        maxConcurrent: 10,
+        subagents: { maxConcurrent: 12 },
       },
     },
     // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
