@@ -5,6 +5,7 @@
 
 import childProcess from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import {
   STATE_DIR,
   WORKSPACE_DIR,
@@ -18,12 +19,47 @@ import {
 } from "./lib/config.js";
 import { tokenLogSafe } from "./lib/auth.js";
 import { runCmd } from "./lib/runCmd.js";
+import {
+  startAutoApprovalLoop,
+  stopAutoApprovalLoop,
+} from "./lib/deviceAuth.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Remove stale session lock files left by a previous gateway process (e.g. after restart).
+ * Prevents "session file locked (timeout 10000ms)" when the new process starts.
+ */
+function clearStaleSessionLocks() {
+  const agentsDir = path.join(STATE_DIR, "agents");
+  if (!fs.existsSync(agentsDir)) return;
+  let removed = 0;
+  try {
+    for (const agent of fs.readdirSync(agentsDir)) {
+      const sessionsDir = path.join(agentsDir, agent, "sessions");
+      if (!fs.existsSync(sessionsDir)) continue;
+      for (const name of fs.readdirSync(sessionsDir)) {
+        if (name.endsWith(".lock")) {
+          try {
+            fs.unlinkSync(path.join(sessionsDir, name));
+            removed++;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+    if (removed > 0) {
+      console.log(`[gateway] Cleared ${removed} stale session lock file(s)`);
+    }
+  } catch (err) {
+    console.warn(`[gateway] clearStaleSessionLocks: ${err.message}`);
+  }
 }
 
 /**
@@ -71,6 +107,8 @@ export async function startGateway(gatewayToken) {
 
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+
+  clearStaleSessionLocks();
 
   console.log(`[gateway] ========== GATEWAY START TOKEN SYNC ==========`);
   console.log(
@@ -223,6 +261,7 @@ export async function ensureGatewayRunning(gatewayToken) {
   if (!gatewayStarting) {
     gatewayStarting = (async () => {
       await startGateway(gatewayToken);
+      startAutoApprovalLoop();
       const ready = await waitForGatewayReady({
         timeoutMs: GATEWAY_READY_TIMEOUT_MS,
       });
@@ -243,6 +282,7 @@ export async function ensureGatewayRunning(gatewayToken) {
  */
 export async function restartGateway(gatewayToken) {
   console.log("[gateway] Restarting gateway...");
+  stopAutoApprovalLoop();
 
   if (gatewayProc) {
     console.log("[gateway] Killing wrapper-managed gateway process");
