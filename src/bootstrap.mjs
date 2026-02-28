@@ -65,6 +65,8 @@ function patchOpenClawJson() {
         // sessions to queue instead of running in parallel.
         maxConcurrent: 10,
         subagents: { maxConcurrent: 12 },
+        // Hide "Reasoning:" blocks from Telegram output by default.
+        reasoningDefault: "off",
       },
     },
     // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
