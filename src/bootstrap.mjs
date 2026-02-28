@@ -198,7 +198,7 @@ function seedWorkspaceFiles() {
  * - We never overwrite an existing file, so real Senpi state is always preserved.
  */
 function ensureSenpiStateFile() {
-  const senpiDir = path.join(process.env.HOME || "/root", ".config", "senpi");
+  const senpiDir = path.join(process.env.HOME || "~", ".config", "senpi");
   const senpiStatePath = path.join(senpiDir, "state.json");
   ensureDir(senpiDir);
   if (!exists(senpiStatePath)) {
