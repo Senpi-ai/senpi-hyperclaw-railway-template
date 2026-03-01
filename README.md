@@ -8,7 +8,7 @@ This repo packages **Openclaw** for Railway with **zero-touch auto-configuration
 - **Zero-touch deployment** — auto-configures from environment variables on first deploy
 - **Telegram integration** — auto-configured; sends "Your bot is ready!" on deploy; when Senpi state is not READY, the agent sends onboarding/funding/first-trade guidance directly to Telegram
 - **Senpi MCP integration** — auto-configured via `SENPI_AUTH_TOKEN`
-- **Workspace prompts** — BOOT.md checks Senpi state and follows [senpi.ai/skill.md](https://www.senpi.ai/skill.md) for onboarding; AGENTS.md, TOOLS.md, MEMORY.md define behavior and skills
+- **Workspace prompts** — **BOOTSTRAP.md** defines startup: read USER.md (chat ID), fetch Senpi profile (on auth error send "token expired" to Telegram and NO_REPLY), check Senpi state; if not READY the agent sends onboarding/funding/first-trade guidance to Telegram; if READY the agent responds NO_REPLY and continues. AGENTS.md, TOOLS.md, MEMORY.md define behavior and skills.
 - Persistent state via **Railway Volume** (config, credentials, memory survive redeploys)
 - One-click **Export backup** (migrate off Railway later)
 - Fallback **Setup Wizard** at `/setup` for manual configuration
@@ -37,7 +37,7 @@ This repo packages **Openclaw** for Railway with **zero-touch auto-configuration
 | `SENPI_AUTH_TOKEN` | Yes | Senpi authentication token for MCP |
 | `OPENCLAW_STATE_DIR` | Recommended | Set to `/data/.openclaw` for persistence |
 | `OPENCLAW_WORKSPACE_DIR` | Recommended | Set to `/data/workspace` for persistence |
-| `TELEGRAM_USERNAME` | Optional | @username or chat ID so BOOT/agent can message the right user; if unset, wrapper may use latest getUpdates chat |
+| `TELEGRAM_USERNAME` | Optional | @username or chat ID so the agent can message the right user; if unset, wrapper may use latest getUpdates chat |
 | `OPENCLAW_GATEWAY_TOKEN` | Optional | Stable gateway auth token (auto-generated if unset) |
 | `SETUP_PASSWORD` | Recommended | Password for `/setup` and Control UI (/, /openclaw). If unset, those routes are disabled and a startup warning is logged. |
 
@@ -89,7 +89,7 @@ If you prefer manual configuration or don't set `AI_PROVIDER`/`AI_API_KEY`, the 
 
 The workspace is preloaded with prompts that guide **end users** (people chatting with your bot) through Senpi onboarding and their first trade:
 
-- **BOOT.md** — On agent startup, checks Senpi state (`~/.config/senpi/state.json`). If state is not READY and Telegram is configured and connected, the agent sends onboarding/funding/first-trade guidance **directly to Telegram** so the user sees it there. Onboarding follows the official flow at [senpi.ai/skill.md](https://www.senpi.ai/skill.md).
+- **BOOTSTRAP.md** — On agent startup: (1) read USER.md for Telegram chat ID, (2) fetch Senpi profile for display name (if auth fails, send "Your Senpi token has expired…" to Telegram and NO_REPLY), (3) check Senpi state from `$SENPI_STATE_DIR/state.json` (default `~/.config/senpi`). If state is **not READY**, the agent welcomes the user and sends onboarding/funding/first-trade guidance **directly to Telegram**; if state is **READY**, the agent responds NO_REPLY and continues. Onboarding follows [senpi.ai/skill.md](https://www.senpi.ai/skill.md).
 - **State-driven flow** — States: FRESH → ONBOARDING → UNFUNDED → AWAITING_FIRST_TRADE → READY.
 - **First trade guide** — When the user is ready, the agent walks them through discovery, opening a small position ($50, 3x), and closing, then suggests skills (DSL, WOLF, Whale Index, etc.).
 - **Skills** — Users can list and install skills via `npx skills add Senpi-ai/senpi-skills --list` and `npx skills add Senpi-ai/senpi-skills --skill <skill-name> -a openclaw`.
