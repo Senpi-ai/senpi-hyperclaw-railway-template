@@ -7,6 +7,7 @@ On startup, follow these steps in order.
 - **State file path:** `$SENPI_STATE_DIR/state.json` (if `SENPI_STATE_DIR` is not set, use `~/.config/senpi` as the default).
 - The bootstrap process ensures this file exists (default state: `FRESH`). **Read it directly.**
 - Use the `state` field: `READY` means skip onboarding; all other values (`FRESH`, `ONBOARDING`, `UNFUNDED`, `AWAITING_FIRST_TRADE`, `FAILED`) mean proceed to onboarding.
+- **You only read the state file — do not write to it or change it.** State transitions (e.g. to `READY`) are not your responsibility; they are managed by bootstrap or the Senpi flow elsewhere. Even after you verify the three gates (account exists, API key set, MCP responds), do **not** update the state file yourself.
 - **Guardrail (defensive fallback):** If for any reason the file or its parent directory does not exist, or the read tool returns an error (e.g. ENOENT), treat state as **not READY** — do not throw or surface an error. Never treat a missing file or a read failure as a fatal error.
 
 ## 2. If State Is Not READY
@@ -20,12 +21,13 @@ On startup, follow these steps in order.
 
 **Send only final, user-facing content.** Do **not** send to the channel:
 
-- Internal status or reasoning (e.g. "State file is empty", "Token is already set", "MCP is working")
-- Step-by-step narratives ("Now let me fetch...", "Let me check...", "Now let me update...")
+- Internal status or reasoning (e.g. "State file is empty", "Token is already set", "MCP is working", "State is not READY — I need to run onboarding", "Token is set — I can skip Step 1", "Let me update the state to READY")
+- Step-by-step narratives ("The user just messaged me, so I now have their chat ID...", "Now let me fetch...", "Let me check...", "Now let me update...", "Let me verify MCP works...", "Good — MCP token is set, skills catalog is fetched...")
 - Subagent or timeout messages ("Subagent main timed out")
 - Tool-call descriptions or progress notes
+- Any mention of checking or updating state, gates, or USER.md in the message to the user
 
-Run onboarding and tool calls silently; then send one or a few clear, friendly messages with the actual information the user needs. The user should not see your internal workflow.
+**Your first reply to the user in Telegram (or any channel) must be only the welcome plus the onboarding content from skill.md.** Do not send multiple messages that narrate your steps. Run all checks and tool calls silently; then send a single (or minimal) message with the actual welcome and flow content. The user must not see your internal workflow.
 
 ### Onboarding flow (follow https://senpi.ai/skill.md?v=1 in order)
 
