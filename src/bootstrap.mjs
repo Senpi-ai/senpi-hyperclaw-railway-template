@@ -203,6 +203,7 @@ function patchOpenClawJson() {
   merged.agents.defaults.models = { ...DESIRED_MODELS, ...existingModels };
 
   // Set default primary model based on which provider API key is configured.
+  // Check provider-specific env vars first, then fall back to AI_PROVIDER.
   const PROVIDER_DEFAULTS = [
     { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-6" },
     { key: "OPENAI_API_KEY", model: "openai/gpt-5.2" },
@@ -217,6 +218,25 @@ function patchOpenClawJson() {
     { key: "OPENROUTER_API_KEY", model: "openrouter/anthropic/claude-sonnet-4-5" },
   ];
   const available = PROVIDER_DEFAULTS.filter((p) => process.env[p.key]?.trim());
+
+  // Fallback: if no provider-specific key matched but AI_PROVIDER + AI_API_KEY
+  // are set (used by auto-onboard), pick the model from AI_PROVIDER.
+  const AI_PROVIDER_MODEL_MAP = {
+    anthropic: "anthropic/claude-opus-4-6",
+    openai: "openai/gpt-5.2",
+    gemini: "google/gemini-3-pro-preview",
+    google: "google/gemini-3-pro-preview",
+    openrouter: "openrouter/anthropic/claude-sonnet-4-5",
+    moonshot: "moonshot/kimi-k2.5",
+    zai: "zai/glm-5",
+    mistral: "mistral/mistral-large-latest",
+    minimax: "minimax/MiniMax-M2.1",
+  };
+  if (available.length === 0 && process.env.AI_PROVIDER?.trim() && process.env.AI_API_KEY?.trim()) {
+    const aiModel = AI_PROVIDER_MODEL_MAP[process.env.AI_PROVIDER.trim().toLowerCase()];
+    if (aiModel) available.push({ key: "AI_API_KEY", model: aiModel });
+  }
+
   if (available.length > 0) {
     merged.agents.defaults.model = {
       primary: available[0].model,
