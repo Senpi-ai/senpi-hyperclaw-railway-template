@@ -95,12 +95,11 @@ RUN mv /usr/bin/rg /usr/bin/rg-real \
     > /usr/local/bin/rg \
   && chmod +x /usr/local/bin/rg
 
-# Workspace bootstrap files (AGENTS.md, SOUL.md, BOOTSTRAP.md, BOOT.md, TOOLS.md)
+# Workspace bootstrap files (AGENTS.md, SOUL.md, BOOTSTRAP.md, TOOLS.md)
 # Copied to the volume at runtime by bootstrap.mjs
 COPY workspace/AGENTS.md /opt/workspace-defaults/AGENTS.md
 COPY workspace/SOUL.md /opt/workspace-defaults/SOUL.md
 COPY workspace/BOOTSTRAP.md /opt/workspace-defaults/BOOTSTRAP.md
-COPY workspace/BOOT.md /opt/workspace-defaults/BOOT.md
 COPY workspace/TOOLS.md /opt/workspace-defaults/TOOLS.md
 
 COPY src ./src

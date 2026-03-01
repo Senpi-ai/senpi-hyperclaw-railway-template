@@ -311,7 +311,6 @@ const MANAGED_WORKSPACE_FILES = new Set([
   "AGENTS.md",
   "SOUL.md",
   "BOOTSTRAP.md",
-  "BOOT.md",
   "TOOLS.md",
 ]);
 
@@ -331,7 +330,7 @@ function seedWorkspaceFiles() {
 /**
  * Ensure ~/.config/senpi/state.json exists with a default FRESH state.
  *
- * BOOT.md runs on every agent startup and reads this file to determine onboarding
+ * BOOTSTRAP.md runs on every agent startup and reads this file to determine onboarding
  * state. If the file or its parent directory is absent, the openclaw `read` tool
  * throws ENOENT at the I/O layer (logged as "[tools] read failed: ENOENT ...") before
  * the agent can handle it gracefully — and this repeats for every agent session.
