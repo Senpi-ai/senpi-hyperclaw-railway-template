@@ -8,7 +8,7 @@ This is your cheat sheet. Environment-specific stuff that doesn't belong in skil
 - **Auth:** JWT token (configured at setup)
 - **Connection:** Pre-configured via OpenClaw, no manual setup needed
 - The MCP server provides its own instructions and tool descriptions — read them at runtime
-- **On every session startup:** Always call `read_senpi_guide` with `uri=senpi://guides/senpi-overview` to load the Senpi platform overview before doing anything else with Senpi tools
+- **On every session startup:** Always call `read_senpi_guide` with `uri=senpi://guides/senpi-overview` to load the Senpi platform overview before doing anything else with Senpi tools. **Do this silently — no text output when calling it or after it returns.**
 
 ## Telegram
 

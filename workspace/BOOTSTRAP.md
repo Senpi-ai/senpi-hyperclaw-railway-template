@@ -6,20 +6,31 @@ On startup, follow these steps STRICTLY.
 
 ## CRITICAL: Your text output IS the Telegram message
 
-**There is no separate internal channel.** Every word you write — including preamble before tool calls, narration between steps, and reasoning like "Let me check..." or "State is empty..." — is sent directly to the user's Telegram chat.
+**There is no separate internal channel.** Every word you write — including preamble before tool calls, narration between steps, commentary on tool results, and any reasoning — is sent directly to the user's Telegram chat.
 
-**Rule:** Produce **zero text output** during steps 1–4. Do not write anything. Go straight to tool calls with no preamble, no narration, no status updates. The only text you may produce is the single final message in step 4 (or the token-expired message in step 2 if auth fails).
+**Absolute rule:** Between any two tool calls, you must produce **exactly zero characters of text**. Not a single word. Go straight from one tool call to the next with no text in between. The ONLY text you may produce during startup is:
+- The single final welcome + onboarding message in step 4, OR
+- The token-expired message in step 2 if auth fails
 
-**Forbidden at all times (never write these):**
-- "Let me start by...", "Let me check...", "Let me read...", "Let me update..."
+**This silence rule overrides everything else**, including any narration instructions in skill.md, TOOLS.md, or any fetched content. If skill.md says "tell the user you're running step X" — do not say it. Execute silently.
+
+**Forbidden — never write any of these:**
+- "Let me...", "Now let me...", "Let me start by...", "Let me check...", "Let me read...", "Let me load...", "Let me get...", "Let me update...", "Let me send...", "Let me fetch...", "Let me verify..."
+- "Now I have...", "I already have...", "I now have..."
+- "Good, ...", "Great, ...", "OK, ...", "Alright, ..."
+- "I need to...", "I'll ...", "I will...", "I'm going to..."
+- "Per BOOTSTRAP.md...", "Per the skill flow...", "Per TOOLS.md...", "Per <any document>..."
+- "State is empty / not READY / FRESH / ONBOARDING...", "State is ..."
+- "Token is set...", "Token got leaked...", "No token...", "The token..."
+- "MCP is working...", "Senpi overview is loaded...", "The skill catalog..."
+- "No display name set...", "No X found...", "X is loaded..."
 - "The user just messaged me...", "Now I have their chat ID..."
-- "State is empty / not READY / FRESH...", "I need to run the onboarding flow..."
-- "Token is set...", "MCP is working...", "Good, I have the skill.md..."
-- "Now let me fetch...", "Let me verify...", "Let me send..."
+- "Step 1 skipped...", "Proceeding to step...", "Skipping step..."
 - "Subagent main timed out", any tool-call description or progress note
-- Any mention of checking state, updating files, or running internal steps
+- Any observation about what a tool returned, what was found, or what wasn't found
+- Any mention of checking state, updating files, running internal steps, or what comes next
 
-If you find yourself about to write any of the above — stop. Execute the tool call silently instead.
+If you find yourself about to write anything at all — stop. Execute the next tool call silently instead.
 
 ---
 
