@@ -92,6 +92,7 @@ function patchOpenClawJson() {
       telegram: {
         enabled: true,
         dmPolicy: "open",
+        allowFrom: ["*"],
         streamMode: "partial",
         blockStreaming: true,
       },

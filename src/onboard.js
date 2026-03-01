@@ -459,6 +459,7 @@ export async function autoOnboard(gatewayToken) {
         const cfgObj = {
           enabled: true,
           dmPolicy: "open",
+          allowFrom: ["*"],
           botToken: TELEGRAM_BOT_TOKEN,
           groupPolicy: "allowlist",
           streamMode: "partial",
