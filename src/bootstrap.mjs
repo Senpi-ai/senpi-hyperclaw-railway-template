@@ -84,7 +84,12 @@ function patchOpenClawJson() {
       trustedProxies: ["127.0.0.1", "::1"],
     },
     channels: {
-      telegram: { enabled: true },
+      telegram: {
+        enabled: true,
+        dmPolicy: "open",
+        streamMode: "partial",
+        blockStreaming: true,
+      },
     },
     plugins: {
       entries: {
