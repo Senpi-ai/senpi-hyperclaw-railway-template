@@ -8,7 +8,7 @@ This repo packages **Openclaw** for Railway with **zero-touch auto-configuration
 - **Zero-touch deployment** — auto-configures from environment variables on first deploy
 - **Telegram integration** — auto-configured; sends "Your bot is ready!" on deploy; when Senpi state is not READY, the agent sends onboarding/funding/first-trade guidance directly to Telegram
 - **Senpi MCP integration** — auto-configured via `SENPI_AUTH_TOKEN`
-- **Workspace prompts** — BOOTSTRAP.md checks Senpi state and follows [senpi.ai/skill.md](https://www.senpi.ai/skill.md) for onboarding; AGENTS.md, TOOLS.md, MEMORY.md define behavior and skills
+- **Workspace prompts** — BOOT.md checks Senpi state and follows [senpi.ai/skill.md](https://www.senpi.ai/skill.md) for onboarding; AGENTS.md, TOOLS.md, MEMORY.md define behavior and skills
 - Persistent state via **Railway Volume** (config, credentials, memory survive redeploys)
 - One-click **Export backup** (migrate off Railway later)
 - Fallback **Setup Wizard** at `/setup` for manual configuration
@@ -89,7 +89,7 @@ If you prefer manual configuration or don't set `AI_PROVIDER`/`AI_API_KEY`, the 
 
 The workspace is preloaded with prompts that guide **end users** (people chatting with your bot) through Senpi onboarding and their first trade:
 
-- **BOOTSTRAP.md** — On agent startup, checks Senpi state (`$SENPI_STATE_DIR/state.json`, default `~/.config/senpi`). If state is not READY and Telegram is configured and connected, the agent sends onboarding/funding/first-trade guidance **directly to Telegram** so the user sees it there. Onboarding follows the official flow at [senpi.ai/skill.md](https://www.senpi.ai/skill.md).
+- **BOOT.md** — On agent startup, checks Senpi state (`~/.config/senpi/state.json`). If state is not READY and Telegram is configured and connected, the agent sends onboarding/funding/first-trade guidance **directly to Telegram** so the user sees it there. Onboarding follows the official flow at [senpi.ai/skill.md](https://www.senpi.ai/skill.md).
 - **State-driven flow** — States: FRESH → ONBOARDING → UNFUNDED → AWAITING_FIRST_TRADE → READY.
 - **First trade guide** — When the user is ready, the agent walks them through discovery, opening a small position ($50, 3x), and closing, then suggests skills (DSL, WOLF, Whale Index, etc.).
 - **Skills** — Users can list and install skills via `npx skills add Senpi-ai/senpi-skills --list` and `npx skills add Senpi-ai/senpi-skills --skill <skill-name> -a openclaw`.
