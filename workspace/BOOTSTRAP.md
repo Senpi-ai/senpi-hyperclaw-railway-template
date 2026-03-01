@@ -4,6 +4,8 @@ On startup, follow these steps exactly.
 
 ### Messages to the user (Telegram / any channel)
 
+**Critical:** Every message you send appears in the user's chat. Until you send the **single** welcome + onboarding message (or the token-expired message in step 2), send **nothing** to the channel. Do not send progress updates, status, or reasoning. Forbidden: "Let me start by...", "The user just messaged me...", "State is empty / not READY...", "Now let me check/fetch/send...", "Token is set...", "MCP is working...", "Good — everything is connected. Now let me send...". **One message only:** the final welcome + skill catalog (or the token-expired text). Run all steps 1–4 silently; then send that one message.
+
 **Send only final, user-facing content.** Do **not** send to the channel:
 
 - Internal status or reasoning (e.g. "State file is empty", "Token is already set", "MCP is working", "State is not READY — I need to run onboarding", "Token is set — I can skip Step 1", "Let me update the state to READY")
