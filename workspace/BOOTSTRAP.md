@@ -2,6 +2,8 @@
 
 On startup, follow these steps exactly.
 
+> **⚠️ Warning (runs first on deploy):** This bootstrap is what runs when the user first messages the bot after deployment. **Do not send internal status, reasoning, or step-by-step text to the channel.** The user must only see the single welcome + onboarding message (or the token-expired message). Run steps 1–4 silently using tool calls only; then send **one** message with the final content. Any "Let me...", "State is...", or progress text you send will appear in the user's chat — avoid that.
+
 ### Messages to the user (Telegram / any channel)
 
 **Critical:** Every message you send appears in the user's chat. Until you send the **single** welcome + onboarding message (or the token-expired message in step 2), send **nothing** to the channel. Do not send progress updates, status, or reasoning. Forbidden: "Let me start by...", "The user just messaged me...", "State is empty / not READY...", "Now let me check/fetch/send...", "Token is set...", "MCP is working...", "Good — everything is connected. Now let me send...". **One message only:** the final welcome + skill catalog (or the token-expired text). Run all steps 1–4 silently; then send that one message.
