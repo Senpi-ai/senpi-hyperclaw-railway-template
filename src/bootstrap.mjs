@@ -345,7 +345,7 @@ function ensureSenpiStateFile() {
   const senpiStatePath = path.join(senpiDir, "state.json");
   ensureDir(senpiDir);
   if (!exists(senpiStatePath)) {
-    fs.writeFileSync(senpiStatePath, JSON.stringify({ state: "FRESH" }, null, 2));
+    fs.writeFileSync(senpiStatePath, JSON.stringify({ state: "ONBOARDING" }, null, 2));
   }
 }
 
