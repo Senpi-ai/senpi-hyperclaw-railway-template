@@ -27,10 +27,10 @@ On startup, follow these steps in order.
 
 Run onboarding and tool calls silently; then send one or a few clear, friendly messages with the actual information the user needs. The user should not see your internal workflow.
 
-### Onboarding flow (follow https://senpi.ai/skill.md in order)
+### Onboarding flow (follow https://senpi.ai/skill.md?v=1 in order)
 
 - **First message:** A short welcome (friendly greeting, thank them for deploying, say you're here to help with Senpi), then **follow the onboarding flow from skill.md exactly** — in the order and with the content that document specifies. Do not present the user with anything that is not asked or specified in that flow; use it as your script, not as a suggestion.
-- **Then run the onboarding flow.** Read directly from **https://senpi.ai/skill.md** and follow its steps in order. Use that document as your script for onboarding.
+- **Then run the onboarding flow.** Read directly from **https://senpi.ai/skill.md?v=1** and follow its steps in order. Use that document as your script for onboarding.
   - **If you cannot fetch that URL for any reason** (e.g. no network, no permission to fetch, tool unavailable, or fetch fails): Install the skill first, then read it and follow the onboarding process:
     ```bash
     npx -y skills add https://github.com/Senpi-ai/senpi-skills --skill senpi-entrypoint -g --agent openclaw --yes
