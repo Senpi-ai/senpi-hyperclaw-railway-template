@@ -93,7 +93,7 @@ function patchOpenClawJson() {
         enabled: true,
         dmPolicy: "open",
         allowFrom: ["*"],
-        streamMode: "partial",
+        streamMode: "block",
         blockStreaming: true,
       },
     },

@@ -63,6 +63,36 @@ function clearStaleSessionLocks() {
 }
 
 /**
+ * Clear all session data files on gateway start so every deploy/restart
+ * begins with fresh sessions. Prevents stale context issues like
+ * "No tool call found for function call output with call_id ...".
+ */
+function clearAllSessions() {
+  const agentsDir = path.join(STATE_DIR, "agents");
+  if (!fs.existsSync(agentsDir)) return;
+  let removed = 0;
+  try {
+    for (const agent of fs.readdirSync(agentsDir)) {
+      const sessionsDir = path.join(agentsDir, agent, "sessions");
+      if (!fs.existsSync(sessionsDir)) continue;
+      for (const name of fs.readdirSync(sessionsDir)) {
+        try {
+          fs.unlinkSync(path.join(sessionsDir, name));
+          removed++;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (removed > 0) {
+      console.log(`[gateway] Cleared ${removed} session file(s) for fresh start`);
+    }
+  } catch (err) {
+    console.warn(`[gateway] clearAllSessions: ${err.message}`);
+  }
+}
+
+/**
  * @param {string[]} args - openclaw CLI args (without entry)
  * @returns {string[]} full args with entry
  */
@@ -108,7 +138,7 @@ export async function startGateway(gatewayToken) {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
-  clearStaleSessionLocks();
+  clearAllSessions();
 
   console.log(`[gateway] ========== GATEWAY START TOKEN SYNC ==========`);
   console.log(
