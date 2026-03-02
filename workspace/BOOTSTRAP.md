@@ -35,9 +35,14 @@ If you find yourself about to write anything at all — stop. Execute the next t
 
 ---
 
-## Step 1 — Read USER.md (silent)
+## Step 1 — Resolve Telegram chat ID (silent)
 
 Read `USER.md` to get the user's Telegram chat ID. **No text output.**
+
+If `USER.md` does not exist or contains no chat ID:
+- The chat ID is available from the current session context — the message that triggered this startup was sent from Telegram and carries the sender's numeric chat ID (e.g. the session target is `telegram:<chat_id>`). Extract it from there.
+- Write it to `USER.md` immediately so future sessions can read it directly.
+- **Never ask the user for their chat ID.** It is always knowable from the incoming message.
 
 ## Step 2 — Get display name from Senpi profile (silent)
 
