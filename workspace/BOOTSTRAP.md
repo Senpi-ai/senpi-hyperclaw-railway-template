@@ -104,13 +104,14 @@ Read the file and check the `state` field:
 
 - **`state` is `"READY"`** → skip to step 5 (no onboarding needed).
 - **`state` is an explicit non-READY value** (`"FRESH"`, `"ONBOARDING"`, `"UNFUNDED"`, `"AWAITING_FIRST_TRADE"`, `"FAILED"`) → proceed to step 4.
-- **`state` is missing, null, or the file is `{}`** → the local cache is empty (e.g. fresh deploy or volume reset); this does NOT mean the user is not onboarded. **Fall back to the MCP as the source of truth:**
-  - Call the `senpi` MCP to query the user's actual account state (e.g. fetch profile or account status).
-  - If the MCP confirms the account is active / funded / ready → treat as READY, skip to step 5.
-  - If the MCP returns a state that indicates the user still needs onboarding → proceed to step 4.
-  - If the MCP call fails → treat as not READY and proceed to step 4.
+- **`state` is missing, null, or the file is `{}`** → the local cache is empty or stale (e.g. fresh deploy, volume reset, or cache eviction). **This does NOT mean the user is not onboarded.** The MCP is the authoritative source of truth. Call `mcp__senpi__user_get_me` (no arguments):
+  - **If it returns a valid user profile** (a `userId` or `privyId` is present in the response) → the account IS already connected and set up. **Write `{"state":"READY"}` to `state.json`** to hydrate the local cache, then skip to step 5. Do not proceed to step 4.
+  - **If it returns an authentication or authorization error** (HTTP 401/403, "token expired", "invalid token", or similar) → the token is invalid; proceed to step 4.
+  - **If the call fails for any other technical reason** (network error, server error) → proceed to step 4.
 
-**Do not write to or modify `state.json`.** You only read it. State transitions are managed by Senpi skills. **No text output.**
+**Critical:** A successful `user_get_me` response is conclusive proof that the user IS connected to Senpi. Never treat a successful MCP response as "needs onboarding". Only proceed to step 4 if MCP explicitly rejects the token or the call itself fails technically.
+
+**Writing to `state.json` is only permitted here** (to hydrate an empty cache when MCP confirms READY). All other state transitions are managed by Senpi skills. **No text output.**
 
 ## Step 4 — If state is not READY
 
