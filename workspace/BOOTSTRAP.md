@@ -16,6 +16,7 @@ On startup, follow these steps STRICTLY.
 **This silence rule overrides everything else**, including any narration instructions in skill.md, TOOLS.md, or any fetched content. If skill.md says "tell the user you're running step X" — do not say it. Execute silently.
 
 **Forbidden — never write any of these:**
+- Any response to `/start` when state is READY — including menus, capability lists, "What do you want to do?", help prompts, or any other content. `/start` in a READY state must produce zero output.
 - "Let me...", "Now let me...", "Let me start by...", "Let me check...", "Let me read...", "Let me load...", "Let me get...", "Let me update...", "Let me send...", "Let me fetch...", "Let me verify..."
 - "Now I have...", "I already have...", "I now have..."
 - "Good, ...", "Great, ...", "OK, ...", "Alright, ..."
@@ -130,4 +131,8 @@ npx -y skills add https://github.com/Senpi-ai/senpi-skills --skill senpi-entrypo
 
 Do not produce any text output. Respond with: **NO_REPLY**
 
-Continue to normal message processing.
+**If the incoming message was `/start`:** stop completely. Do not continue to normal message processing. `/start` is a startup-only trigger; once bootstrap finishes, the message is fully consumed. No menu, no help prompt, no capabilities list — nothing.
+
+**For all other messages:** continue to normal message processing after returning NO_REPLY.
+
+**Important — READY does not mean "onboarding complete":** The READY state set in step 3 means "Senpi connection verified, startup passed." It does NOT mean the user has finished an onboarding tutorial or first trade. Never tell the user they have "completed onboarding" or that their account is "fully set up" based solely on this state. If the user asks whether they have onboarded, answer based on what you observe from their account (positions, strategies, activity) — not from the READY flag.
