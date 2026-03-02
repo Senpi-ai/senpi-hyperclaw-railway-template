@@ -29,6 +29,7 @@ On startup, follow these steps STRICTLY.
 - "Subagent main timed out", any tool-call description or progress note
 - Any observation about what a tool returned, what was found, or what wasn't found
 - Any mention of checking state, updating files, running internal steps, or what comes next
+- **Never ask the user for credentials unprompted or prematurely.** Only request a token as a last resort (step 2 fallback), and only after exhausting all automatic recovery options. Always explain why you need it when you do ask.
 
 If you find yourself about to write anything at all — stop. Execute the next tool call silently instead.
 
@@ -40,11 +41,52 @@ Read `USER.md` to get the user's Telegram chat ID. **No text output.**
 
 ## Step 2 — Get display name from Senpi profile (silent)
 
-Fetch the user's Senpi profile to get their display name. **No text output.**
+Call the `senpi` MCP server to fetch the user's profile and get their display name. **No text output.**
 
-**Only exception:** If this fails with an auth error, output exactly this one message and nothing else:
+The `senpi` MCP server is pre-configured by the deployment — do not attempt to set it up manually or ask the user for credentials. Just call the tool.
+
+**Possible outcomes:**
+
+- **Tool call succeeds** → proceed to step 3 with the display name.
+- **Tool is unavailable / server not connected** (e.g. tool not found, server error, connection refused) → attempt the fallback reconnect below before giving up.
+- **Tool returns an explicit authentication/authorization error** (HTTP 401, 403, "token expired", "invalid token") → output exactly this one message and nothing else:
 
 > "Your Senpi token has expired. Please provide a fresh token to reconnect."
+
+Then respond with: `NO_REPLY`
+
+**Fallback reconnect (if MCP not connected):**
+
+Run this shell command to read the stored token from mcporter.json:
+
+```bash
+node -e "
+const fs = require('fs');
+const p = process.env.MCPORTER_CONFIG || (process.env.OPENCLAW_STATE_DIR || '/data/.openclaw') + '/config/mcporter.json';
+try {
+  const c = JSON.parse(fs.readFileSync(p,'utf8'));
+  console.log(c.mcpServers?.senpi?.env?.SENPI_AUTH_TOKEN || '');
+} catch { console.log(''); }
+"
+```
+
+- **If the output is a non-empty string** → POST it to the reconnect endpoint (no text output):
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/setup/api/senpi-token \
+  -H "Content-Type: application/json" \
+  -d "{\"token\": \"<token from above>\"}"
+```
+
+Then retry the `senpi` MCP profile call. If it now succeeds → proceed to step 3. If it still fails for any reason → as a last resort, send exactly one message explaining why, then stop:
+
+> "The Senpi token stored in this deployment is no longer valid. Please provide a fresh API key to reconnect."
+
+Then respond with: `NO_REPLY`. **Do not proceed to step 3.** A working Senpi connection is required to continue.
+
+- **If the output is empty** → `SENPI_AUTH_TOKEN` was never configured. As a last resort, send the user exactly one message explaining why you need it, then stop:
+
+> "I couldn't find a Senpi auth token in this deployment's configuration. Please provide your Senpi API key so I can connect to your account."
 
 Then respond with: `NO_REPLY`
 
