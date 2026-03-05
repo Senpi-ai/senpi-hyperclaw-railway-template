@@ -402,22 +402,22 @@ function registerSkillUpdateCron() {
       env: cronEnv,
       stdio: "pipe",
     });
-  } catch {
-    // Job may not exist yet — ignore
+  } catch (err) {
+    console.warn("[bootstrap] cron remove skipped (job may not exist yet): " + err.message);
   }
 
   try {
     const message =
-      `Run this command with no output or reply: python3 "${SENPI_SCRIPT}" --cron. Then exit. Do not deliver or announce anything.`;
+      `Run python3 "${SENPI_SCRIPT}" and report back the full list of skill updates and new skills found. If there are no updates, say nothing.`;
     execFileSync(
       OPENCLAW_NODE,
       [
         OPENCLAW_ENTRY,
         "cron", "add",
         "--name", CRON_JOB_NAME,
-        "--cron", "0 0 * * *",
+        "--cron", "*/5 * * * *",
         "--session", "isolated",
-        "--no-deliver",
+        "--announce",
         "--message", message,
       ],
       { env: cronEnv, stdio: "pipe" }
