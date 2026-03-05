@@ -21,7 +21,7 @@ import {
   isOnboardingInProgress,
   AUTO_ONBOARD_FINGERPRINT_FILE,
 } from "./onboard.js";
-import { bootstrapOpenClaw } from "./bootstrap.mjs";
+import { bootstrapOpenClaw, registerSkillUpdateCron } from "./bootstrap.mjs";
 import { createSetupRouter } from "./routes/setup.js";
 import {
   controlUiMiddleware,
@@ -96,9 +96,17 @@ const server = app.listen(PORT, () => {
       console.error(`[wrapper] Bootstrap sync error (non-fatal): ${err}`);
     }
     // Restart gateway so it picks up bootstrap patch (e.g. dangerouslyDisableDeviceAuth for cron without pairing)
-    restartGateway(OPENCLAW_GATEWAY_TOKEN).catch((err) => {
-      console.error(`[wrapper] Gateway startup failed: ${err}`);
-    });
+    restartGateway(OPENCLAW_GATEWAY_TOKEN)
+      .then(() => {
+        try {
+          registerSkillUpdateCron();
+        } catch (err) {
+          console.error(`[wrapper] Skill update cron registration failed: ${err}`);
+        }
+      })
+      .catch((err) => {
+        console.error(`[wrapper] Gateway startup failed: ${err}`);
+      });
   }
 });
 

@@ -453,5 +453,6 @@ export function bootstrapOpenClaw() {
   seedWorkspaceFiles();
   seedSenpiScripts();
   patchOpenClawJson();
-  registerSkillUpdateCron();
 }
+
+export { registerSkillUpdateCron };
