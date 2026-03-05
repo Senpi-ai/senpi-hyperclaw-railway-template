@@ -102,6 +102,9 @@ COPY workspace/SOUL.md /opt/workspace-defaults/SOUL.md
 COPY workspace/BOOTSTRAP.md /opt/workspace-defaults/BOOTSTRAP.md
 COPY workspace/TOOLS.md /opt/workspace-defaults/TOOLS.md
 
+# Senpi scripts (staged in image; bootstrap.mjs copies to $OPENCLAW_STATE_DIR at runtime)
+COPY senpi-scripts/ /opt/senpi-scripts/
+
 COPY src ./src
 
 ENV PORT=8080
