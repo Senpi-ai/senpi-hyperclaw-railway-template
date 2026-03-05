@@ -418,7 +418,7 @@ function registerSkillUpdateCron() {
         OPENCLAW_ENTRY,
         "cron", "add",
         "--name", CRON_JOB_NAME,
-        "--cron", "*/5 * * * *",
+        "--cron", "0 0 * * *",
         "--session", "isolated",
         "--announce",
         "--message", message,
