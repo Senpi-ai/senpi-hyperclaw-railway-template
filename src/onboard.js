@@ -462,7 +462,7 @@ export async function autoOnboard(gatewayToken) {
           allowFrom: ["*"],
           botToken: TELEGRAM_BOT_TOKEN,
           groupPolicy: "allowlist",
-          streamMode: "partial",
+          streamMode: "block",
           blockStreaming: true,
         };
         const set = await runCmd(
