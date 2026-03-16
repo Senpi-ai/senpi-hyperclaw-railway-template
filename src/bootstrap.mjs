@@ -141,16 +141,20 @@ function patchOpenClawJson() {
       },
     },
     plugins: {
-      entries: {
-        telegram: { enabled: true },
-        "trading-runtime": {
-          enabled: true,
-          config: {
-            stateDir: path.join(STATE_DIR, "senpi-state"),
-            apiKey: resolveSenpiToken() || undefined,
-          },
-        },
-      },
+      entries: (() => {
+        const entries = { telegram: { enabled: true } };
+        // Only add trading-runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false to omit when plugin is not in image)
+        if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+          entries["trading-runtime"] = {
+            enabled: true,
+            config: {
+              stateDir: path.join(STATE_DIR, "senpi-state"),
+              apiKey: resolveSenpiToken() || undefined,
+            },
+          };
+        }
+        return entries;
+      })(),
     },
     hooks: {
       internal: {
@@ -165,6 +169,11 @@ function patchOpenClawJson() {
   };
 
   const merged = deepMerge(cfg, patch);
+
+  // If trading-runtime is disabled, remove it so config stays valid when plugin is not in image
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false" && merged.plugins?.entries) {
+    delete merged.plugins.entries["trading-runtime"];
+  }
 
   merged.agents = merged.agents || {};
   merged.agents.defaults = merged.agents.defaults || {};
@@ -198,7 +207,9 @@ function patchOpenClawJson() {
     delete merged.tools.fs;
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
-  console.log("[bootstrap] trading-runtime plugin configured (stateDir:", path.join(STATE_DIR, "senpi-state"), ")");
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    console.log("[bootstrap] trading-runtime plugin configured (stateDir:", path.join(STATE_DIR, "senpi-state"), ")");
+  }
 }
 
 function writeMcporterConfig() {

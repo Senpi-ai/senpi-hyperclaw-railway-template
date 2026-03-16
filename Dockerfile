@@ -74,11 +74,13 @@ RUN pnpm install --prod --frozen-lockfile && pnpm store prune
 # Install MCPorter CLI so the mcporter skill can execute it (pinned for reproducible builds)
 RUN npm install -g mcporter@0.7.3 mcp-remote@0.1.38
 
-# Install senpi trading-runtime plugin
-RUN npm install -g @senpi/trading-runtime
-
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
+
+# Install senpi trading-runtime plugin into /openclaw so the gateway (node /openclaw/dist/entry.js) can resolve it
+WORKDIR /openclaw
+RUN npm install @senpi/trading-runtime --omit=dev
+WORKDIR /app
 
 # Vendor mcporter skill from the same OpenClaw ref used in build stage (no extra git clone)
 RUN mkdir -p /opt/openclaw-skills
