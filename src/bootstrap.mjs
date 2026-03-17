@@ -211,7 +211,10 @@ function patchOpenClawJson() {
     if (version) {
       merged.plugins = merged.plugins || {};
       merged.plugins.installs = merged.plugins.installs || {};
-      merged.plugins.installs["trading-recipe"] = { spec: `@senpi/trading-recipe@${version}` };
+      merged.plugins.installs["trading-recipe"] = {
+        source: "npm",
+        spec: `@senpi/trading-recipe@${version}`,
+      };
     }
   }
 
