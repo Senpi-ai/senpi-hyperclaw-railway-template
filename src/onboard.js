@@ -78,6 +78,7 @@ export function canAutoOnboard() {
  * Resolve Telegram user to chat ID and write USER.md. Preserves existing sections (e.g. Trading Profile).
  */
 export async function resolveTelegramAndWriteUserMd() {
+  console.log(`[telegram] resolveTelegramAndWriteUserMd`);
   let chatId = "";
   let username = "";
   let updateList = [];
@@ -92,6 +93,7 @@ export async function resolveTelegramAndWriteUserMd() {
   let existingExtra = "";
   let existingChatId = "";
   try {
+    console.log(`[telegram] reading USER.md`);
     const existing = fs.readFileSync(userMdPath, "utf8");
     const chatIdMatch = existing.match(/^- Chat ID:\s*(\d+)/m);
     if (chatIdMatch) {
@@ -107,6 +109,7 @@ export async function resolveTelegramAndWriteUserMd() {
   }
 
   try {
+    console.log(`[telegram] verifying bot token`);
     const meRes = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe`
     );
@@ -118,6 +121,7 @@ export async function resolveTelegramAndWriteUserMd() {
     console.log(`[telegram] Bot verified: @${me.result.username}`);
 
     if (TELEGRAM_USERNAME) {
+      console.log(`[telegram] TELEGRAM_USERNAME: ${TELEGRAM_USERNAME}`);
       if (/^\d+$/.test(TELEGRAM_USERNAME)) {
         chatId = TELEGRAM_USERNAME;
         console.log(`[telegram] Using TELEGRAM_USERNAME (numeric): ${chatId}`);
@@ -322,11 +326,13 @@ export function buildOnboardArgs(payload, gatewayToken) {
  * @param {string} gatewayToken - OPENCLAW_GATEWAY_TOKEN
  */
 export async function autoOnboard(gatewayToken) {
+  console.log(`[auto-onboard] autoOnboard`);
   // Ensure state directory exists before telegram resolution (cache write needs it)
   fs.mkdirSync(STATE_DIR, { recursive: true });
-
+console.log(`[auto-onboard] directory created`);
   if (TELEGRAM_BOT_TOKEN && TELEGRAM_USERNAME) {
     await resolveTelegramAndWriteUserMd();
+    console.log(`[auto-onboard] telegram resolved and written`);
   }
 
   if (!canAutoOnboard()) {
