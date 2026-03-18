@@ -38,7 +38,7 @@ export function stripBearer(s) {
 export const SETUP_PASSWORD = process.env.SETUP_PASSWORD?.trim();
 export const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
-export const TELEGRAM_USERNAME = process.env.TELEGRAM_USERNAME?.trim() || "";
+export const TELEGRAM_USERNAME = process.env.TELEGRAM_USERID?.trim() || process.env.TELEGRAM_USERNAME?.trim() || "";
 export const AI_PROVIDER =
   process.env.AI_PROVIDER?.trim()?.toLowerCase() || "";
 export const AI_API_KEY = stripBearer(

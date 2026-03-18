@@ -6,6 +6,7 @@ import {
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
+import { TELEGRAM_USERNAME } from "./lib/config.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -96,7 +97,6 @@ function patchOpenClawJson() {
     },
     channels: {
       telegram: (() => {
-        const TELEGRAM_USERNAME = process.env.TELEGRAM_USERNAME?.trim() || "";
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
         // Resolve numeric ID: env is numeric, or read from cache file
         console.log(`[bootstrap] TELEGRAM_USERNAME: ${TELEGRAM_USERNAME}`);
