@@ -492,7 +492,7 @@ console.log(`[auto-onboard] directory created`);
         const cfgObj = {
           enabled: true,
           dmPolicy: resolvedId ? "allowlist" : "pairing",
-          ...(resolvedId ? { allowFrom: [resolvedId] } : {}),
+          allowFrom: resolvedId ? [resolvedId] : ["*"],
           botToken: TELEGRAM_BOT_TOKEN,
           groupPolicy: "allowlist",
           streamMode: "block",

@@ -5,7 +5,7 @@ import {
   PROVIDER_DEFAULTS,
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
-import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
+import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
 import { TELEGRAM_USERNAME } from "./lib/config.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
@@ -101,7 +101,7 @@ function patchOpenClawJson() {
         // Resolve numeric ID: env is numeric, or read from cache file
         console.log(`[bootstrap] TELEGRAM_USERNAME: ${TELEGRAM_USERNAME}`);
         let numericId = /^\d+$/.test(TELEGRAM_USERNAME) ? TELEGRAM_USERNAME : readCachedTelegramId();
-        // Fallback: recover ID from existing config (survives redeploy on persistent volume)
+        // Fallback chain: existing config allowFrom → USER.md chat ID
         if (!numericId) {
           const existingAllowFrom = cfg.channels?.telegram?.allowFrom;
           if (Array.isArray(existingAllowFrom) && existingAllowFrom.length > 0) {
@@ -111,6 +111,14 @@ function patchOpenClawJson() {
               writeCachedTelegramId(numericId);
               console.log(`[bootstrap] Telegram: recovered ID ${numericId} from existing config`);
             }
+          }
+        }
+        if (!numericId) {
+          const userMdId = readChatIdFromUserMd();
+          if (userMdId) {
+            numericId = userMdId;
+            writeCachedTelegramId(numericId);
+            console.log(`[bootstrap] Telegram: recovered ID ${numericId} from USER.md`);
           }
         }
         console.log(`[bootstrap] numericId: ${numericId}`);
@@ -125,6 +133,7 @@ function patchOpenClawJson() {
           console.log(`[bootstrap] Telegram dmPolicy: allowlist (ID: ${numericId})`);
         } else {
           base.dmPolicy = "pairing";
+          base.allowFrom = ["*"];
           if (TELEGRAM_BOT_TOKEN) {
             console.warn("[bootstrap] Telegram: no cached user ID — using dmPolicy 'pairing' as safe fallback. Send /start to the bot and redeploy.");
           }
