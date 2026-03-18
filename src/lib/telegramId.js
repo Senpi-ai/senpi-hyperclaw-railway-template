@@ -55,6 +55,8 @@ export async function resolveTelegramUserId(botToken, username) {
   }
 
   try {
+    // Clear any existing webhook — getUpdates returns empty while a webhook is active
+    await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`);
     const res = await fetch(
       `https://api.telegram.org/bot${botToken}/getUpdates?limit=100`
     );

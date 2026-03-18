@@ -132,6 +132,8 @@ export async function resolveTelegramAndWriteUserMd() {
       } else {
         username = TELEGRAM_USERNAME.replace(/^@/, "").toLowerCase();
         console.log(`[telegram] Resolving username: ${username}`);
+        // Clear any existing webhook — getUpdates returns empty while a webhook is active
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook`);
         const updatesRes = await fetch(
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`
         );
