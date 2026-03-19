@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   DESIRED_MODELS,
   PROVIDER_DEFAULTS,
@@ -17,6 +18,9 @@ const MCPORTER_PATH =
   process.env.MCPORTER_CONFIG ||
   path.join(STATE_DIR, "config", "mcporter.json");
 
+/** Persisted Senpi token so plugin and MCP can be configured independently (env or file). */
+const SENPI_TOKEN_FILE = path.join(STATE_DIR, "config", "senpi.token");
+
 const IMAGE_SKILLS_DIR = "/opt/openclaw-skills";
 const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 
@@ -33,6 +37,41 @@ function exists(p) {
   }
 }
 
+/**
+ * Resolve Senpi token: env first, then persisted file, then mcporter.json for backward compat.
+ * MCP is the older feature (token was only in mcporter.json); plugin is newer. We don't assume
+ * both are present — so canonical store is senpi.token. If we find token in mcporter.json only,
+ * we migrate it to senpi.token so future runs don't depend on MCP config.
+ */
+function resolveSenpiToken() {
+  const fromEnv = process.env.SENPI_AUTH_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  if (exists(SENPI_TOKEN_FILE)) {
+    try {
+      return fs.readFileSync(SENPI_TOKEN_FILE, "utf8").trim();
+    } catch {
+      // fall through to backward-compat
+    }
+  }
+  // Backward compat: existing installs may have token only in mcporter.json (MCP-only setup)
+  if (exists(MCPORTER_PATH)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(MCPORTER_PATH, "utf8"));
+      const token = config?.mcpServers?.senpi?.env?.SENPI_AUTH_TOKEN;
+      const fromMcp = typeof token === "string" ? token.trim() : "";
+      if (fromMcp) {
+        ensureDir(path.dirname(SENPI_TOKEN_FILE));
+        fs.writeFileSync(SENPI_TOKEN_FILE, fromMcp);
+        console.log("[bootstrap] Migrated Senpi token from mcporter.json to config/senpi.token");
+        return fromMcp;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return "";
+}
+
 // Recursive copy (Node 22 supports fs.cpSync)
 function copyDirIfMissing(srcDir, dstDir) {
   if (!exists(srcDir)) return;
@@ -40,6 +79,17 @@ function copyDirIfMissing(srcDir, dstDir) {
   ensureDir(path.dirname(dstDir));
   fs.cpSync(srcDir, dstDir, { recursive: true });
 }
+
+/** When missing, OpenClaw may not expose llm-task/message for the main agent. */
+const DEFAULT_AGENTS_LIST = [
+  {
+    id: "main",
+    tools: {
+      profile: "full",
+      alsoAllow: ["llm-task", "message"],
+    },
+  },
+];
 
 function deepMerge(target, patch) {
   if (Array.isArray(target) || Array.isArray(patch)) return patch;
@@ -61,6 +111,20 @@ function patchOpenClawJson() {
 
   // Remove any invalid keys that would cause gateway startup to fail.
   delete cfg.mcpServers;
+
+  // Union with existing allow so user-installed plugins stay permitted (deepMerge replaces arrays).
+  const existingPluginAllow = Array.isArray(cfg.plugins?.allow)
+    ? cfg.plugins.allow.map((id) => String(id).trim()).filter(Boolean)
+    : [];
+  const bootstrapPluginAllow =
+    process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false"
+      ? ["telegram", "llm-task", "trading-recipe"]
+      : ["telegram"];
+  let pluginsAllow = [...new Set([...existingPluginAllow, ...bootstrapPluginAllow])];
+  // Match entries cleanup: do not keep trading-recipe in allow when runtime is disabled.
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") {
+    pluginsAllow = pluginsAllow.filter((id) => id !== "trading-recipe");
+  }
 
   const patch = {
     agents: {
@@ -101,15 +165,7 @@ function patchOpenClawJson() {
         // Resolve numeric ID: env is numeric, or read from cache file
         console.log(`[bootstrap] TELEGRAM_USERNAME: ${TELEGRAM_USERNAME}`);
         let numericId = /^\d+$/.test(TELEGRAM_USERNAME) ? TELEGRAM_USERNAME : readCachedTelegramId();
-        // Fallback: recover ID from USER.md (persisted from a previous successful resolution)
-        if (!numericId) {
-          numericId = readChatIdFromUserMd();
-          if (numericId) {
-            writeCachedTelegramId(numericId);
-            console.log(`[bootstrap] Telegram: recovered ID ${numericId} from USER.md`);
-          }
-        }
-        // Fallback: recover ID from existing config (survives redeploy on persistent volume)
+        // Fallback chain: existing config allowFrom → USER.md chat ID
         if (!numericId) {
           const existingAllowFrom = cfg.channels?.telegram?.allowFrom;
           if (Array.isArray(existingAllowFrom) && existingAllowFrom.length > 0) {
@@ -119,6 +175,14 @@ function patchOpenClawJson() {
               writeCachedTelegramId(numericId);
               console.log(`[bootstrap] Telegram: recovered ID ${numericId} from existing config`);
             }
+          }
+        }
+        if (!numericId) {
+          const userMdId = readChatIdFromUserMd();
+          if (userMdId) {
+            numericId = userMdId;
+            writeCachedTelegramId(numericId);
+            console.log(`[bootstrap] Telegram: recovered ID ${numericId} from USER.md`);
           }
         }
         console.log(`[bootstrap] numericId: ${numericId}`);
@@ -137,6 +201,7 @@ function patchOpenClawJson() {
           console.log(`[bootstrap] Telegram dmPolicy: allowlist (ID: ${numericId})`);
         } else {
           base.dmPolicy = "pairing";
+          base.allowFrom = ["*"];
           if (TELEGRAM_BOT_TOKEN) {
             console.warn("[bootstrap] Telegram: no cached user ID — using dmPolicy 'pairing' as safe fallback. Send /start to the bot and redeploy.");
           }
@@ -145,9 +210,23 @@ function patchOpenClawJson() {
       })(),
     },
     plugins: {
-      entries: {
-        telegram: { enabled: true },
-      },
+      // Always include telegram (+ trading-recipe when enabled); preserve any other ids from config.
+      allow: pluginsAllow,
+      entries: (() => {
+        const entries = { telegram: { enabled: true } };
+        // Only add trading-recipe if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false to omit when plugin is not in image)
+        if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+          entries["llm-task"] = { enabled: true };
+          entries["trading-recipe"] = {
+            enabled: true,
+            config: {
+              stateDir: path.join(STATE_DIR, "senpi-state"),
+              apiKey: resolveSenpiToken() || undefined,
+            },
+          };
+        }
+        return entries;
+      })(),
     },
     hooks: {
       internal: {
@@ -162,6 +241,21 @@ function patchOpenClawJson() {
   };
 
   const merged = deepMerge(cfg, patch);
+
+  // When OPENCLAW_STATE_DIR is set, prefer STATE_DIR/extensions so one copy wins (no duplication with bundled)
+  const stateDirSet = process.env.OPENCLAW_STATE_DIR?.trim();
+  if (stateDirSet) {
+    merged.plugins = merged.plugins || {};
+    merged.plugins.load = merged.plugins.load || {};
+    const paths = Array.isArray(merged.plugins.load.paths) ? merged.plugins.load.paths : [];
+    const stateExt = path.join(STATE_DIR, "extensions");
+    if (!paths.includes(stateExt)) merged.plugins.load.paths = [...paths, stateExt];
+  }
+
+  // If trading-recipe is disabled, remove it so config stays valid when plugin is not in image
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false" && merged.plugins?.entries) {
+    delete merged.plugins.entries["trading-recipe"];
+  }
 
   merged.agents = merged.agents || {};
   merged.agents.defaults = merged.agents.defaults || {};
@@ -190,18 +284,48 @@ function patchOpenClawJson() {
     );
   }
 
+  // Always rewrite agents.list so profile/alsoAllow fixes take effect on every redeploy.
+  // Find and patch the main agent entry if it exists; otherwise set the full default list.
+  if (!Array.isArray(merged.agents.list) || merged.agents.list.length === 0) {
+    merged.agents.list = structuredClone(DEFAULT_AGENTS_LIST);
+    console.log("[bootstrap] Set agents.list (main: profile=full, alsoAllow llm-task/message)");
+  } else {
+    const mainIdx = merged.agents.list.findIndex((a) => a.id === "main");
+    if (mainIdx !== -1) {
+      const entry = merged.agents.list[mainIdx];
+      // Fix: ensure profile=full and use alsoAllow (not allow) so all tools stay accessible.
+      const tools = entry.tools || {};
+      const wasAllow = Array.isArray(tools.allow);
+      tools.profile = "full";
+      tools.alsoAllow = Array.from(new Set([...(tools.alsoAllow || []), "llm-task", "message"]));
+      if (wasAllow) {
+        // allow acts as an intersection filter and overrides profile; remove it.
+        delete tools.allow;
+        console.log("[bootstrap] Removed agents.list[main].tools.allow (was restricting tools); using alsoAllow instead");
+      }
+      entry.tools = tools;
+      merged.agents.list[mainIdx] = entry;
+    } else {
+      merged.agents.list.push(...structuredClone(DEFAULT_AGENTS_LIST));
+      console.log("[bootstrap] Added main agent to agents.list (profile=full, alsoAllow llm-task/message)");
+    }
+  }
+
   // tools.fs is not supported in OpenClaw 2026.2.12; remove if present (e.g. from prior bootstrap).
   if (merged.tools && typeof merged.tools === "object") {
     delete merged.tools.fs;
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    console.log("[bootstrap] trading-recipe plugin configured (stateDir:", path.join(STATE_DIR, "senpi-state"), ")");
+  }
 }
 
 function writeMcporterConfig() {
   ensureDir(path.dirname(MCPORTER_PATH));
 
   const mcpUrl = process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
-  const senpiToken = process.env.SENPI_AUTH_TOKEN?.trim() || "";
+  const senpiToken = resolveSenpiToken();
 
   // The senpi server entry we always want present
   const senpiEntry = {
@@ -292,6 +416,51 @@ function ensureSenpiStateFile() {
   }
 }
 
+/**
+ * Install @senpi/trading-recipe via openclaw CLI when config exists and plugin is enabled
+ * but not yet installed. Ensures plugins.installs and state dir are correct for updates.
+ */
+function installTradingRecipePluginIfNeeded() {
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") return;
+  const cfgPath = path.join(STATE_DIR, "openclaw.json");
+  if (!exists(cfgPath)) return;
+
+  // trading-recipe depends on the llm-task plugin surface. Run on every boot when
+  // trading is enabled — not only on first install (early return below skipped this).
+  const enableLlmTask = spawnSync("openclaw", ["plugins", "enable", "llm-task"], {
+    env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
+    stdio: "pipe",
+    encoding: "utf8",
+  });
+  if (enableLlmTask.status !== 0) {
+    console.error(
+      "[bootstrap] openclaw plugins enable llm-task failed:",
+      enableLlmTask.stderr || enableLlmTask.stdout
+    );
+    // Continue; failing to enable llm-task should not necessarily block
+    // the wrapper boot in environments that already have it enabled.
+  }
+
+  const pluginDir = path.join(STATE_DIR, "extensions", "trading-recipe");
+  if (exists(pluginDir)) return;
+
+  ensureDir(path.join(STATE_DIR, "extensions"));
+  const result = spawnSync(
+    "openclaw",
+    ["plugins", "install", "@senpi/trading-recipe"],
+    {
+      env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
+      stdio: "pipe",
+      encoding: "utf8",
+    }
+  );
+  if (result.status !== 0) {
+    console.error("[bootstrap] openclaw plugins install @senpi/trading-recipe failed:", result.stderr || result.stdout);
+    return;
+  }
+  console.log("[bootstrap] trading-recipe plugin installed via openclaw plugins install");
+}
+
 export function bootstrapOpenClaw() {
   ensureDir(STATE_DIR);
   ensureDir(WORKSPACE_DIR);
@@ -315,5 +484,6 @@ export function bootstrapOpenClaw() {
   ensureSenpiStateFile();
   writeMcporterConfig();
   seedWorkspaceFiles();
+  installTradingRecipePluginIfNeeded();
   patchOpenClawJson();
 }

@@ -28,7 +28,7 @@ import {
   AUTO_ONBOARD_FINGERPRINT_FILE,
 } from "./onboard.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
-import { resolveTelegramUserId } from "./lib/telegramId.js";
+import { resolveTelegramUserId, readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd, discoverTelegramUserFromUpdates } from "./lib/telegramId.js";
 import { createSetupRouter } from "./routes/setup.js";
 import {
   controlUiMiddleware,
@@ -106,11 +106,28 @@ const server = app.listen(PORT, () => {
     );
     (async () => {
       // Resolve Telegram user ID via API BEFORE bootstrap, so allowlist config is correct
-      if (TELEGRAM_BOT_TOKEN && TELEGRAM_USERNAME) {
-        console.log(`[wrapper] Resolving Telegram user ID: ${TELEGRAM_USERNAME}`);
-        await resolveTelegramUserId(TELEGRAM_BOT_TOKEN, TELEGRAM_USERNAME).catch((err) => {
-          console.warn(`[telegram] Pre-bootstrap ID resolution failed (non-fatal): ${err.message}`);
-        });
+      if (TELEGRAM_BOT_TOKEN) {
+        if (TELEGRAM_USERNAME) {
+          console.log(`[wrapper] Resolving Telegram user ID: ${TELEGRAM_USERNAME}`);
+          await resolveTelegramUserId(TELEGRAM_BOT_TOKEN, TELEGRAM_USERNAME).catch((err) => {
+            console.warn(`[telegram] Pre-bootstrap ID resolution failed (non-fatal): ${err.message}`);
+          });
+        }
+        // Fallback chain when cache file is still empty:
+        // 1. Read chat ID from USER.md (written during initial onboarding)
+        // 2. Discover from recent bot updates via Telegram API
+        if (!readCachedTelegramId()) {
+          const userMdId = readChatIdFromUserMd();
+          if (userMdId) {
+            console.log(`[wrapper] Recovered Telegram chat ID from USER.md: ${userMdId}`);
+            writeCachedTelegramId(userMdId);
+          } else {
+            console.log("[wrapper] No cached Telegram ID — trying to discover from recent bot updates...");
+            await discoverTelegramUserFromUpdates(TELEGRAM_BOT_TOKEN).catch((err) => {
+              console.warn(`[telegram] Bot update discovery failed (non-fatal): ${err.message}`);
+            });
+          }
+        }
       }
       try {
         bootstrapOpenClaw();

@@ -77,6 +77,7 @@ RUN npm install -g mcporter@0.7.3 mcp-remote@0.1.38
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
 
+
 # Vendor mcporter skill from the same OpenClaw ref used in build stage (no extra git clone)
 RUN mkdir -p /opt/openclaw-skills
 COPY --from=openclaw-build /openclaw/skills/mcporter /opt/openclaw-skills/mcporter

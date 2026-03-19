@@ -60,6 +60,34 @@ Param: `{ "name": "JobName" }`
 
 List all active cron jobs. No params needed.
 
+## Senpi Trading Recipe
+
+The `@senpi/trading-recipe` plugin is pre-installed and auto-configured.
+State is persisted at `/data/.openclaw/senpi-state/`.
+
+### Manage strategies
+
+```bash
+# List installed strategies
+openclaw senpi trading-recipe list
+
+# Load a recipe from a YAML file (hot-loads, no restart needed)
+openclaw senpi trading-recipe create -p /path/to/recipe.yaml
+
+# Remove a recipe by id
+openclaw senpi trading-recipe uninstallRecipe --recipe-id <id>
+```
+
+### In-shell reference
+
+```bash
+openclaw senpi guide           # overview
+openclaw senpi guide scanners  # scanner types and config fields
+openclaw senpi guide dsl       # DSL exit engine
+openclaw senpi guide examples  # print minimal YAML
+openclaw senpi guide version   # plugin version
+```
+
 ## Token Refresh
 
 If Senpi calls fail with an auth error, the token has expired. Tell the user to provide a fresh token, then run:

@@ -4,7 +4,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { TELEGRAM_CHAT_ID_FILE, WORKSPACE_DIR } from "./config.js";
+import { TELEGRAM_CHAT_ID_FILE } from "./config.js";
+
+const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR?.trim() || "/data/workspace";
 
 /**
  * Synchronously read cached Telegram numeric user ID from disk.
@@ -20,26 +22,80 @@ export function readCachedTelegramId() {
 }
 
 /**
- * Read Telegram chat ID from USER.md (persisted from a previous successful resolution).
- * @returns {string} numeric ID or ""
- */
-export function readChatIdFromUserMd() {
-  try {
-    const userMd = fs.readFileSync(path.join(WORKSPACE_DIR, "USER.md"), "utf8");
-    const match = userMd.match(/^- Chat ID:\s*(\d+)/m);
-    return match ? match[1] : "";
-  } catch {
-    return "";
-  }
-}
-
-/**
  * Synchronously write a numeric Telegram user ID to the cache file.
  * @param {string} id
  */
 export function writeCachedTelegramId(id) {
   if (!id || !/^\d+$/.test(String(id))) return;
   fs.writeFileSync(TELEGRAM_CHAT_ID_FILE, String(id), "utf8");
+}
+
+/**
+ * Read the Telegram chat ID from USER.md (written during onboarding).
+ * Format: "- Chat ID: 1234567890"
+ * @returns {string} numeric chat ID or ""
+ */
+export function readChatIdFromUserMd() {
+  try {
+    const userMdPath = path.join(WORKSPACE_DIR, "USER.md");
+    const content = fs.readFileSync(userMdPath, "utf8");
+    const match = content.match(/^- Chat ID:\s*(\d+)/m);
+    if (match) {
+      return match[1];
+    }
+  } catch {
+    // USER.md doesn't exist or isn't readable
+  }
+  return "";
+}
+
+/**
+ * Discover the Telegram user ID from the most recent bot update, without requiring
+ * a known username. Useful when TELEGRAM_USERNAME is not set but the user has already
+ * messaged the bot.
+ * @param {string} botToken
+ * @returns {Promise<string>} numeric user ID or ""
+ */
+export async function discoverTelegramUserFromUpdates(botToken) {
+  if (!botToken) return "";
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`);
+    const res = await fetch(
+      `https://api.telegram.org/bot${botToken}/getUpdates?limit=100`
+    );
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.result) || data.result.length === 0) {
+      console.log("[telegram] discoverTelegramUserFromUpdates: no updates available");
+      return "";
+    }
+
+    for (let i = data.result.length - 1; i >= 0; i--) {
+      const update = data.result[i];
+      const chat =
+        update.message?.chat ||
+        update.edited_message?.chat ||
+        update.my_chat_member?.chat ||
+        update.chat_member?.chat;
+      const from =
+        update.message?.from ||
+        update.edited_message?.from ||
+        update.my_chat_member?.from;
+      const id = chat?.id || from?.id;
+      if (id) {
+        const idStr = String(id);
+        writeCachedTelegramId(idStr);
+        const username = from?.username || chat?.username || "";
+        console.log(
+          `[telegram] Discovered user from recent update: ${idStr}${username ? ` (@${username})` : ""}`
+        );
+        return idStr;
+      }
+    }
+    console.log("[telegram] discoverTelegramUserFromUpdates: updates had no chat/user IDs");
+  } catch (err) {
+    console.warn(`[telegram] discoverTelegramUserFromUpdates error: ${err.message}`);
+  }
+  return "";
 }
 
 /**
