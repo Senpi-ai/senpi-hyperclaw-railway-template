@@ -24,6 +24,12 @@ const SENPI_TOKEN_FILE = path.join(STATE_DIR, "config", "senpi.token");
 const IMAGE_SKILLS_DIR = "/opt/openclaw-skills";
 const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 
+/** Plugin id from published openclaw.plugin.json (@senpi-ai/runtime). */
+const SENPI_RUNTIME_PLUGIN_ID = "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+/** Previous id before rename; stripped from config on merge. */
+const LEGACY_SENPI_PLUGIN_ID = "trading-recipe";
+
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
@@ -118,12 +124,14 @@ function patchOpenClawJson() {
     : [];
   const bootstrapPluginAllow =
     process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false"
-      ? ["telegram", "llm-task", "trading-recipe"]
+      ? ["telegram", "llm-task", SENPI_RUNTIME_PLUGIN_ID]
       : ["telegram"];
   let pluginsAllow = [...new Set([...existingPluginAllow, ...bootstrapPluginAllow])];
-  // Match entries cleanup: do not keep trading-recipe in allow when runtime is disabled.
+  // Do not keep Senpi runtime plugin in allow when disabled.
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") {
-    pluginsAllow = pluginsAllow.filter((id) => id !== "trading-recipe");
+    pluginsAllow = pluginsAllow.filter(
+      (id) => id !== SENPI_RUNTIME_PLUGIN_ID && id !== LEGACY_SENPI_PLUGIN_ID,
+    );
   }
 
   const patch = {
@@ -210,14 +218,14 @@ function patchOpenClawJson() {
       })(),
     },
     plugins: {
-      // Always include telegram (+ trading-recipe when enabled); preserve any other ids from config.
+      // Always include telegram (+ @senpi-ai/runtime when enabled); preserve any other ids from config.
       allow: pluginsAllow,
       entries: (() => {
         const entries = { telegram: { enabled: true } };
-        // Only add trading-recipe if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false to omit when plugin is not in image)
+        // Only add Senpi runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false when plugin is not installed)
         if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
           entries["llm-task"] = { enabled: true };
-          entries["trading-recipe"] = {
+          entries[SENPI_RUNTIME_PLUGIN_ID] = {
             enabled: true,
             config: {
               stateDir: path.join(STATE_DIR, "senpi-state"),
@@ -252,9 +260,18 @@ function patchOpenClawJson() {
     if (!paths.includes(stateExt)) merged.plugins.load.paths = [...paths, stateExt];
   }
 
-  // If trading-recipe is disabled, remove it so config stays valid when plugin is not in image
+  // If Senpi runtime is disabled, remove entries so config stays valid when plugin is not installed
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false" && merged.plugins?.entries) {
-    delete merged.plugins.entries["trading-recipe"];
+    delete merged.plugins.entries[SENPI_RUNTIME_PLUGIN_ID];
+    delete merged.plugins.entries[LEGACY_SENPI_PLUGIN_ID];
+  }
+
+  // After rename from trading-recipe: drop legacy id from allow/entries (avoid duplicate plugins)
+  if (merged.plugins?.allow?.length) {
+    merged.plugins.allow = merged.plugins.allow.filter((id) => id !== LEGACY_SENPI_PLUGIN_ID);
+  }
+  if (merged.plugins?.entries?.[LEGACY_SENPI_PLUGIN_ID]) {
+    delete merged.plugins.entries[LEGACY_SENPI_PLUGIN_ID];
   }
 
   merged.agents = merged.agents || {};
@@ -317,7 +334,11 @@ function patchOpenClawJson() {
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
-    console.log("[bootstrap] trading-recipe plugin configured (stateDir:", path.join(STATE_DIR, "senpi-state"), ")");
+    console.log(
+      "[bootstrap] Senpi runtime plugin configured (stateDir:",
+      path.join(STATE_DIR, "senpi-state"),
+      ")",
+    );
   }
 }
 
@@ -417,16 +438,16 @@ function ensureSenpiStateFile() {
 }
 
 /**
- * Install @senpi/trading-recipe via openclaw CLI when config exists and plugin is enabled
+ * Install @senpi-ai/runtime via openclaw CLI when config exists and plugin is enabled
  * but not yet installed. Ensures plugins.installs and state dir are correct for updates.
  */
-function installTradingRecipePluginIfNeeded() {
+function installSenpiRuntimePluginIfNeeded() {
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") return;
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  // trading-recipe depends on the llm-task plugin surface. Run on every boot when
-  // trading is enabled — not only on first install (early return below skipped this).
+  // Senpi runtime depends on the llm-task plugin surface. Run on every boot when
+  // enabled — not only on first install (early return below skipped this).
   const enableLlmTask = spawnSync("openclaw", ["plugins", "enable", "llm-task"], {
     env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
     stdio: "pipe",
@@ -441,13 +462,13 @@ function installTradingRecipePluginIfNeeded() {
     // the wrapper boot in environments that already have it enabled.
   }
 
-  const pluginDir = path.join(STATE_DIR, "extensions", "trading-recipe");
+  const pluginDir = path.join(STATE_DIR, "extensions", "@senpi-ai", "runtime");
   if (exists(pluginDir)) return;
 
   ensureDir(path.join(STATE_DIR, "extensions"));
   const result = spawnSync(
     "openclaw",
-    ["plugins", "install", "@senpi/trading-recipe"],
+    ["plugins", "install", SENPI_RUNTIME_NPM_SPEC],
     {
       env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
       stdio: "pipe",
@@ -455,10 +476,13 @@ function installTradingRecipePluginIfNeeded() {
     }
   );
   if (result.status !== 0) {
-    console.error("[bootstrap] openclaw plugins install @senpi/trading-recipe failed:", result.stderr || result.stdout);
+    console.error(
+      `[bootstrap] openclaw plugins install ${SENPI_RUNTIME_NPM_SPEC} failed:`,
+      result.stderr || result.stdout
+    );
     return;
   }
-  console.log("[bootstrap] trading-recipe plugin installed via openclaw plugins install");
+  console.log(`[bootstrap] ${SENPI_RUNTIME_NPM_SPEC} installed via openclaw plugins install`);
 }
 
 export function bootstrapOpenClaw() {
@@ -484,6 +508,6 @@ export function bootstrapOpenClaw() {
   ensureSenpiStateFile();
   writeMcporterConfig();
   seedWorkspaceFiles();
-  installTradingRecipePluginIfNeeded();
+  installSenpiRuntimePluginIfNeeded();
   patchOpenClawJson();
 }

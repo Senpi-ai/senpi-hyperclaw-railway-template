@@ -60,22 +60,22 @@ Param: `{ "name": "JobName" }`
 
 List all active cron jobs. No params needed.
 
-## Senpi Trading Recipe
+## Senpi runtime
 
-The `@senpi/trading-recipe` plugin is pre-installed and auto-configured.
+The `@senpi-ai/runtime` plugin is installed by bootstrap when enabled.
 State is persisted at `/data/.openclaw/senpi-state/`.
 
-### Manage strategies
+### Manage runtimes
 
 ```bash
-# List installed strategies
-openclaw senpi trading-recipe list
+# List installed runtimes
+openclaw senpi runtime list
 
-# Load a recipe from a YAML file (hot-loads, no restart needed)
-openclaw senpi trading-recipe create -p /path/to/recipe.yaml
+# Add a runtime from a YAML file (hot-loads, no restart needed)
+openclaw senpi runtime create -p /path/to/strategy.yaml
 
-# Remove a recipe by id
-openclaw senpi trading-recipe uninstallRecipe --recipe-id <id>
+# Remove a runtime by id
+openclaw senpi runtime delete <runtime-id>
 ```
 
 ### In-shell reference
