@@ -502,14 +502,6 @@ function installSenpiTradingRuntimeSkillIfNeeded() {
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  // Only install the skill if the plugin is present — the skill is help documentation
-  // for the plugin, so it is useless without it.
-  const pluginDir = path.join(STATE_DIR, "extensions", "@senpi-ai", "runtime");
-  if (!exists(pluginDir)) {
-    console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill skipped: plugin not installed`);
-    return;
-  }
-
   const sentinelPath = path.join(STATE_DIR, "config", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-skill.installed`);
   if (exists(sentinelPath)) {
     console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill already installed, skipping`);
