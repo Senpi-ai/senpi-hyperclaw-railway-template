@@ -32,6 +32,14 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
 
+/**
+ * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
+ * trading plugin. Installed via the `skills` CLI from the senpi-skills GitHub repo.
+ */
+const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
+const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
+const SENPI_SKILLS_BRANCH = "SAITA/dsl";
+
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
@@ -476,6 +484,59 @@ function installSenpiRuntimePluginIfNeeded() {
   console.log(`[bootstrap] ${SENPI_RUNTIME_NPM_SPEC} installed via openclaw plugins install`);
 }
 
+/**
+ * Install the senpi-trading-runtime help skill via the `skills` CLI.
+ *
+ * The skill lives in the senpi-skills GitHub repo under a feature branch until it is
+ * merged to main. Update SENPI_SKILLS_BRANCH in this file when that happens.
+ *
+ * Idempotency: a sentinel file at STATE_DIR/config/senpi-trading-runtime-skill.installed
+ * is written on first success and checked on every subsequent boot. We use a sentinel
+ * rather than a directory check because the `skills` CLI installs into the openclaw
+ * global skills dir (/openclaw/skills/) which may not be accessible for inspection.
+ *
+ * Non-fatal: a failure is logged but does not prevent the gateway from starting.
+ */
+function installSenpiTradingRuntimeSkillIfNeeded() {
+  if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") return;
+  const cfgPath = path.join(STATE_DIR, "openclaw.json");
+  if (!exists(cfgPath)) return;
+
+  const sentinelPath = path.join(STATE_DIR, "config", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-skill.installed`);
+  if (exists(sentinelPath)) {
+    console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill already installed, skipping`);
+    return;
+  }
+
+  // Build the source URL. The skills CLI resolves a GitHub tree URL to the correct
+  // branch + subdirectory: https://github.com/owner/repo/tree/<branch>/<skill-dir>
+  const skillUrl = `${SENPI_SKILLS_REPO}/tree/${SENPI_SKILLS_BRANCH}/${SENPI_TRADING_RUNTIME_SKILL_NAME}`;
+
+  console.log(`[bootstrap] Installing ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill from ${skillUrl} ...`);
+  const result = spawnSync(
+    "npx",
+    ["-y", "skills", "add", skillUrl, "--agent", "openclaw", "--yes"],
+    {
+      env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
+      stdio: "pipe",
+      encoding: "utf8",
+    }
+  );
+
+  if (result.status !== 0) {
+    console.error(
+      `[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill install failed (non-fatal):`,
+      result.stderr || result.stdout
+    );
+    return;
+  }
+
+  // Write sentinel so future boots skip the install.
+  ensureDir(path.dirname(sentinelPath));
+  fs.writeFileSync(sentinelPath, new Date().toISOString());
+  console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill installed (branch: ${SENPI_SKILLS_BRANCH})`);
+}
+
 export function bootstrapOpenClaw() {
   ensureDir(STATE_DIR);
   ensureDir(WORKSPACE_DIR);
@@ -500,5 +561,6 @@ export function bootstrapOpenClaw() {
   writeMcporterConfig();
   seedWorkspaceFiles();
   installSenpiRuntimePluginIfNeeded();
+  installSenpiTradingRuntimeSkillIfNeeded();
   patchOpenClawJson();
 }
