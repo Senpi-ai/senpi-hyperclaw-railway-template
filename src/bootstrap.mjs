@@ -466,7 +466,7 @@ function installSenpiRuntimePluginIfNeeded() {
   ensureDir(path.join(STATE_DIR, "extensions"));
   const result = spawnSync(
     "openclaw",
-    ["plugins", "install", SENPI_RUNTIME_NPM_SPEC],
+    ["plugins", "install", SENPI_RUNTIME_NPM_SPEC, "--dangerously-force-unsafe-install"],
     {
       env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
       stdio: "pipe",
