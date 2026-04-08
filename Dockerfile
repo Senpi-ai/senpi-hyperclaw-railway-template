@@ -21,10 +21,10 @@ WORKDIR /openclaw
 
 # OpenClaw version control:
 # - Set OPENCLAW_VERSION build-arg to pin a specific tag/branch (e.g., v2026.2.26)
-# - If not set, falls back to v2026.2.22
+# - If not set, falls back to v2026.4.8
 ARG OPENCLAW_VERSION
 RUN set -eux; \
-  REF="${OPENCLAW_VERSION:-v2026.2.22}"; \
+  REF="${OPENCLAW_VERSION:-v2026.4.8}"; \
   echo "✓ Using OpenClaw ref: ${REF}"; \
   git clone --depth 1 --branch "${REF}" https://github.com/openclaw/openclaw.git .
 
