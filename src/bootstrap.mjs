@@ -460,7 +460,7 @@ function installSenpiRuntimePluginIfNeeded() {
     // the wrapper boot in environments that already have it enabled.
   }
 
-  const pluginDir = path.join(STATE_DIR, "extensions", "@senpi-ai", "runtime");
+  const pluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
   if (exists(pluginDir)) return;
 
   ensureDir(path.join(STATE_DIR, "extensions"));
