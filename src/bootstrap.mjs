@@ -27,10 +27,11 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 /**
  * OpenClaw discovery uses the unscoped npm name as idHint (@senpi-ai/runtime → "runtime").
  * openclaw.plugin.json "id" must match that hint or you get "plugin id mismatch" warnings.
- * npm install spec stays scoped.
+ * npm install spec stays scoped (override with SENPI_RUNTIME_NPM_SPEC).
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC =
+  process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
