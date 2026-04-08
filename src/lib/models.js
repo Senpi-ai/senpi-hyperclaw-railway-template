@@ -19,6 +19,7 @@ export const DESIRED_MODELS = {
   "anthropic/claude-opus-4": { alias: "Opus 4" },
 
   // ── OpenAI (API key) ──
+  "openai/gpt-5.4": { alias: "GPT-5.4" },
   "openai/gpt-5.2": { alias: "GPT-5.2" },
   "openai/gpt-5.1-codex": { alias: "GPT-5.1 Codex" },
   "openai/gpt-4.1": { alias: "GPT-4.1" },
@@ -30,6 +31,7 @@ export const DESIRED_MODELS = {
   "openai/o4-mini": { alias: "o4 Mini" },
 
   // ── OpenAI Codex (subscription/OAuth) ──
+  "openai-codex/gpt-5.4": { alias: "GPT-5.4 Codex" },
   "openai-codex/gpt-5.3-codex": { alias: "GPT-5.3 Codex" },
 
   // ── Google Gemini ──
@@ -158,7 +160,7 @@ export const DESIRED_MODELS = {
  */
 export const PROVIDER_DEFAULTS = [
   { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-6" },
-  { key: "OPENAI_API_KEY", model: "openai/gpt-5.2" },
+  { key: "OPENAI_API_KEY", model: "openai/gpt-5.4" },
   { key: "GEMINI_API_KEY", model: "google/gemini-3.1-pro-preview" },
   { key: "XAI_API_KEY", model: "xai/grok-3" },
   { key: "MISTRAL_API_KEY", model: "mistral/mistral-large-latest" },
@@ -176,7 +178,7 @@ export const PROVIDER_DEFAULTS = [
  */
 export const AI_PROVIDER_MODEL_MAP = {
   anthropic: "anthropic/claude-opus-4-6",
-  openai: "openai/gpt-5.2",
+  openai: "openai/gpt-5.4",
   gemini: "google/gemini-3.1-pro-preview",
   google: "google/gemini-3.1-pro-preview",
   openrouter: "openrouter/anthropic/claude-sonnet-4-5",
