@@ -29,7 +29,7 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
  * openclaw.plugin.json "id" must match that hint or you get "plugin id mismatch" warnings.
  * npm install spec stays scoped.
  */
-const SENPI_RUNTIME_PLUGIN_ID = "@senpi-ai/runtime";
+const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
 
 /**
