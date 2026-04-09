@@ -204,7 +204,7 @@ function patchOpenClawJson() {
         console.log(`[bootstrap] numericId: ${numericId}`);
         const base = {
           enabled: true,
-          streamMode: "block",
+          streaming: "block",
           blockStreaming: true,
         };
         if (numericId) {
