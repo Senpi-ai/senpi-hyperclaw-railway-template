@@ -204,7 +204,7 @@ function patchOpenClawJson() {
         console.log(`[bootstrap] numericId: ${numericId}`);
         const base = {
           enabled: true,
-          streaming: "partial",
+          streaming: "block",
         };
         if (numericId) {
           const existingAllowFrom = cfg.channels?.telegram?.allowFrom;
