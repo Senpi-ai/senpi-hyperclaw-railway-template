@@ -56,12 +56,13 @@ Set `AI_PROVIDER` to one of the following values, and put the corresponding API 
 | `gemini` | Google Gemini | Gemini API key |
 | `google` | Google Gemini (alias) | Gemini API key |
 | `ai-gateway` | Vercel AI Gateway | AI Gateway API key |
-| `moonshot` | Moonshot AI (Kimi K2) | Moonshot API key |
+| `moonshot` | Moonshot AI (Kimi K2.5) | Moonshot API key |
 | `kimi-code` | Kimi Code | Kimi Code API key |
-| `zai` | Z.AI (GLM 4.7) | Z.AI API key |
-| `minimax` | MiniMax (M2.1) | MiniMax API key |
+| `zai` | Z.AI (GLM-5.1) | Z.AI API key |
+| `minimax` | MiniMax (M2.7) | MiniMax API key |
 | `synthetic` | Synthetic (Anthropic-compatible) | Synthetic API key |
-| `opencode-zen` | OpenCode Zen (multi-model proxy) | OpenCode Zen API key |
+| `opencode-zen` | OpenCode Zen (multi-model proxy) | OpenCode API key |
+| `opencode-go` | OpenCode Go (low-cost open models) | OpenCode API key (same as Zen) |
 
 **Example** (Anthropic):
 
@@ -69,6 +70,47 @@ Set `AI_PROVIDER` to one of the following values, and put the corresponding API 
 AI_PROVIDER=anthropic
 AI_API_KEY=sk-ant-your-key-here
 ```
+
+**Example** (OpenCode Go — low-cost open models):
+
+```
+AI_PROVIDER=opencode-go
+AI_API_KEY=sk-your-opencode-key
+```
+
+OpenCode Go gives access to curated open coding models (GLM-5.1, GLM-5, Kimi K2.5, MiMo V2, MiniMax M2.5/M2.7) for $5/first month then $10/month. It uses the same API key as OpenCode Zen. The template auto-injects a custom provider block so `opencode-go/*` model refs resolve correctly.
+
+### Provider-specific environment variables
+
+Instead of `AI_PROVIDER` + `AI_API_KEY`, you can set provider-specific env vars directly. When multiple keys are present, the first match in priority order becomes the primary model and the rest become fallbacks:
+
+| Env var | Default model |
+|---|---|
+| `ANTHROPIC_API_KEY` | `anthropic/claude-opus-4-6` |
+| `OPENAI_API_KEY` | `openai/gpt-5.4` |
+| `GEMINI_API_KEY` | `google/gemini-3.1-pro-preview` |
+| `XAI_API_KEY` | `xai/grok-4.20` |
+| `MISTRAL_API_KEY` | `mistral/mistral-large-latest` |
+| `GROQ_API_KEY` | `groq/llama-3.3-70b` |
+| `TOGETHER_API_KEY` | `together/moonshotai/Kimi-K2.5` |
+| `ZAI_API_KEY` | `zai/glm-5.1` |
+| `MOONSHOT_API_KEY` | `moonshot/kimi-k2.5` |
+| `VENICE_API_KEY` | `venice/llama-3.3-70b` |
+| `OPENROUTER_API_KEY` | `openrouter/anthropic/claude-sonnet-4-6` |
+| `OPENCODE_API_KEY` | `opencode-go/glm-5.1` |
+
+### Allowed models
+
+The full model allowlist lives in `src/lib/models.js`. Users can `/model switch` to any model in the list. Key providers and their latest models:
+
+- **Anthropic:** Claude Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
+- **OpenAI:** GPT-5.4, GPT-5.4 Mini/Nano, GPT-5.2, GPT-5.1 Codex, GPT-4.1, o3/o4-mini
+- **Google Gemini:** Gemini 3.1 Pro, 3 Flash, 3.1 Flash Lite, 2.5 Pro/Flash + specialized variants
+- **xAI:** Grok 4.20, Grok 4, Grok 4.1 Fast, Grok 3/3 Mini
+- **Z.AI:** GLM-5.1, GLM-5, GLM-4.7, GLM-4.6
+- **OpenCode Go:** GLM-5.1, GLM-5, Kimi K2.5, MiMo V2 Pro/Omni, MiniMax M2.5/M2.7
+- **Venice AI:** 30+ models including private open-source and anonymized proxied models
+- **Others:** Moonshot (Kimi K2.5), MiniMax (M2.1–M2.7), Mistral, Groq, Together, OpenRouter, Bedrock
 
 ## Getting a Telegram bot token
 
