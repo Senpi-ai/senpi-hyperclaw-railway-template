@@ -282,6 +282,33 @@ function patchOpenClawJson() {
       : {};
   merged.agents.defaults.models = { ...DESIRED_MODELS, ...existingModels };
 
+  // ── OpenCode Go custom provider ──
+  // OpenCode Go uses the same OPENCODE_API_KEY as Zen but routes through a
+  // separate base URL. Since OpenClaw's built-in catalog doesn't include
+  // opencode-go yet, we inject it as an OpenAI-compatible custom provider so
+  // opencode-go/* model refs resolve correctly at runtime.
+  const opencodeKey = process.env.OPENCODE_API_KEY?.trim() || process.env.OPENCODE_ZEN_API_KEY?.trim();
+  if (opencodeKey) {
+    merged.models = merged.models || {};
+    merged.models.providers = merged.models.providers || {};
+    if (!merged.models.providers["opencode-go"]) {
+      merged.models.providers["opencode-go"] = {
+        api: "openai-completions",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+        models: [
+          { id: "glm-5.1",      name: "GLM-5.1",           reasoning: true,  input: ["text"], contextWindow: 204800, maxTokens: 131072 },
+          { id: "glm-5",        name: "GLM-5",             reasoning: true,  input: ["text"], contextWindow: 204800, maxTokens: 131072 },
+          { id: "kimi-k2.5",    name: "Kimi K2.5",         reasoning: true,  input: ["text"], contextWindow: 131072, maxTokens: 65536  },
+          { id: "mimo-v2-pro",  name: "MiMo V2 Pro",       reasoning: true,  input: ["text"], contextWindow: 131072, maxTokens: 65536  },
+          { id: "mimo-v2-omni", name: "MiMo V2 Omni",      reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 65536  },
+          { id: "minimax-m2.5", name: "MiniMax M2.5",      reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 65536  },
+          { id: "minimax-m2.7", name: "MiniMax M2.7",      reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 65536  },
+        ],
+      };
+      console.log("[bootstrap] Injected opencode-go custom provider (OpenCode Go)");
+    }
+  }
+
   const available = PROVIDER_DEFAULTS.filter((p) => process.env[p.key]?.trim());
 
   if (available.length === 0 && process.env.AI_PROVIDER?.trim() && process.env.AI_API_KEY?.trim()) {

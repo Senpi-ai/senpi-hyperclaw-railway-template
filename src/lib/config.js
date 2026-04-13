@@ -60,6 +60,7 @@ export const PROVIDER_TO_AUTH_CHOICE = {
   minimax: "minimax-api",
   synthetic: "synthetic-api-key",
   "opencode-zen": "opencode-zen",
+  "opencode-go": "opencode-zen",       // Go uses same API key as Zen
 };
 
 /** Providers that use ADC/OAuth instead of an API key (AI_API_KEY not required). */
@@ -85,6 +86,7 @@ const PROVIDER_API_KEY_ENV = {
   minimax: "MINIMAX_API_KEY",
   synthetic: "SYNTHETIC_API_KEY",
   "opencode-zen": "OPENCODE_API_KEY",
+  "opencode-go": "OPENCODE_API_KEY",
 };
 
 /**
