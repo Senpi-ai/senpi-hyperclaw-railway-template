@@ -236,12 +236,16 @@ function patchOpenClawJson() {
         // Only add Senpi runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false when plugin is not installed)
         if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
           entries["llm-task"] = { enabled: true };
-          entries[SENPI_RUNTIME_PLUGIN_ID] = {
-            enabled: true,
-            config: {
+          const runtimeConfig = {
               stateDir: path.join(STATE_DIR, "senpi-state"),
               apiKey: resolveSenpiToken() || undefined,
-            },
+          };
+          if (process.env.DISABLE_AUTO_UPDATE === "true") {
+            runtimeConfig.autoUpdate = { enabled: false };
+          }
+          entries[SENPI_RUNTIME_PLUGIN_ID] = {
+            enabled: true,
+            config: runtimeConfig,
           };
         }
         return entries;
