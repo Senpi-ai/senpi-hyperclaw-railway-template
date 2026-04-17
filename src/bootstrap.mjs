@@ -242,6 +242,9 @@ function patchOpenClawJson() {
           };
           if (process.env.DISABLE_AUTO_UPDATE === "true") {
             runtimeConfig.autoUpdate = { enabled: false };
+            console.log("[bootstrap] DISABLE_AUTO_UPDATE=true → autoUpdate.enabled set to false");
+          } else {
+            console.log(`[bootstrap] DISABLE_AUTO_UPDATE=${JSON.stringify(process.env.DISABLE_AUTO_UPDATE)} → autoUpdate left at default (enabled)`);
           }
           entries[SENPI_RUNTIME_PLUGIN_ID] = {
             enabled: true,
@@ -340,10 +343,11 @@ function patchOpenClawJson() {
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    const writtenAutoUpdate = merged.plugins?.entries?.runtime?.config?.autoUpdate;
     console.log(
       "[bootstrap] Senpi runtime plugin configured (stateDir:",
       path.join(STATE_DIR, "senpi-state"),
-      ")",
+      ") autoUpdate:", JSON.stringify(writtenAutoUpdate),
     );
   }
 }
