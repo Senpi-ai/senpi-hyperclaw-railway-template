@@ -333,6 +333,14 @@ export function createSetupRouter() {
           ])
         );
 
+        const reloadCfg = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+        if (!reloadCfg?.gateway?.reload?.mode) {
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs(["config", "set", "--json", "gateway.reload.mode", JSON.stringify("restart")])
+          );
+        }
+
         const channelsHelp = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["channels", "add", "--help"])
