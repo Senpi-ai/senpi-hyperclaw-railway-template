@@ -517,32 +517,34 @@ function installSenpiRuntimePluginIfNeeded() {
 }
 
 /**
- * Install the senpi-trading-runtime help skill by cloning the senpi-skills repo
- * at SENPI_SKILLS_BRANCH and copying the skill subdir into STATE_DIR/skills/.
+ * Install all skills listed in SENPI_SKILLS_TO_INSTALL by cloning the senpi-skills repo
+ * once and copying each skill subdir into STATE_DIR/skills/.
  *
- * The skill lives under a feature branch until merged to main.
- * Update SENPI_SKILLS_BRANCH in this file when that happens.
- *
- * Idempotency: a sentinel file at STATE_DIR/config/senpi-trading-runtime-skill.installed
+ * Idempotency: a per-skill sentinel file at STATE_DIR/config/<skillName>-skill.installed
  * is written on first success and checked on every subsequent boot.
  *
- * Non-fatal: a failure is logged but does not prevent the gateway from starting.
+ * Non-fatal: failures are logged per skill but do not prevent the gateway from starting.
  */
 function installSenpiSkillsIfNeeded() {
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") return;
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  const skillsToInstall = SENPI_SKILLS_TO_INSTALL.filter((skillName) => {
-    const sentinelPath = path.join(STATE_DIR, "config", `${skillName}-skill.installed`);
-    if (exists(sentinelPath)) {
-      console.log(`[bootstrap] ${skillName} skill already installed, skipping`);
-      return false;
-    }
-    return true;
-  });
+  // Compute sentinel paths once; filter out already-installed skills.
+  const pending = SENPI_SKILLS_TO_INSTALL
+    .map((skillName) => ({
+      skillName,
+      sentinelPath: path.join(STATE_DIR, "config", `${skillName}-skill.installed`),
+    }))
+    .filter(({ skillName, sentinelPath }) => {
+      if (exists(sentinelPath)) {
+        console.log(`[bootstrap] ${skillName} skill already installed, skipping`);
+        return false;
+      }
+      return true;
+    });
 
-  if (skillsToInstall.length === 0) return;
+  if (pending.length === 0) return;
 
   // Clone the skill directory directly from the repo rather than using the `skills` CLI.
   // The `skills` CLI mis-parses branch names containing "/" (e.g. "SAITA/dsl") and leaks
@@ -571,7 +573,7 @@ function installSenpiSkillsIfNeeded() {
 
   ensureDir(STATE_SKILLS_DIR);
 
-  for (const skillName of skillsToInstall) {
+  for (const { skillName, sentinelPath } of pending) {
     const skillSrcDir = path.join(tmpDir, skillName);
     if (!exists(skillSrcDir)) {
       console.error(`[bootstrap] ${skillName} skill directory not found in cloned repo`);
@@ -581,7 +583,6 @@ function installSenpiSkillsIfNeeded() {
     const skillDestDir = path.join(STATE_SKILLS_DIR, skillName);
     fs.cpSync(skillSrcDir, skillDestDir, { recursive: true });
 
-    const sentinelPath = path.join(STATE_DIR, "config", `${skillName}-skill.installed`);
     ensureDir(path.dirname(sentinelPath));
     fs.writeFileSync(sentinelPath, new Date().toISOString());
     console.log(`[bootstrap] ${skillName} skill installed (branch: ${SENPI_SKILLS_BRANCH})`);
