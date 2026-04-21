@@ -33,12 +33,14 @@ const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
 
 /**
- * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
- * trading plugin. Installed via the `skills` CLI from the senpi-skills GitHub repo.
+ * Skills installed from the senpi-skills GitHub repo at deploy time.
+ * Add entries here to install additional Senpi skills.
  */
-const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
 const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
 const SENPI_SKILLS_BRANCH = "main";
+const SENPI_SKILLS_TO_INSTALL = [
+  "senpi-trading-runtime",
+];
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -526,23 +528,27 @@ function installSenpiRuntimePluginIfNeeded() {
  *
  * Non-fatal: a failure is logged but does not prevent the gateway from starting.
  */
-function installSenpiTradingRuntimeSkillIfNeeded() {
+function installSenpiSkillsIfNeeded() {
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED === "false") return;
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  const sentinelPath = path.join(STATE_DIR, "config", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-skill.installed`);
-  if (exists(sentinelPath)) {
-    console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill already installed, skipping`);
-    return;
-  }
+  const skillsToInstall = SENPI_SKILLS_TO_INSTALL.filter((skillName) => {
+    const sentinelPath = path.join(STATE_DIR, "config", `${skillName}-skill.installed`);
+    if (exists(sentinelPath)) {
+      console.log(`[bootstrap] ${skillName} skill already installed, skipping`);
+      return false;
+    }
+    return true;
+  });
+
+  if (skillsToInstall.length === 0) return;
 
   // Clone the skill directory directly from the repo rather than using the `skills` CLI.
   // The `skills` CLI mis-parses branch names containing "/" (e.g. "SAITA/dsl") and leaks
   // the branch suffix into the skill-name filter, causing "No matching skills found".
-  // Cloning the full repo at the target branch and copying the skill subdir is reliable.
-  const tmpDir = path.join(STATE_DIR, "tmp", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-clone`);
-  const skillDestDir = path.join(STATE_SKILLS_DIR, SENPI_TRADING_RUNTIME_SKILL_NAME);
+  // Cloning the full repo once and copying skill subdirs is reliable and efficient.
+  const tmpDir = path.join(STATE_DIR, "tmp", "senpi-skills-clone");
 
   // Clean up any previous failed clone attempt.
   if (exists(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -557,27 +563,31 @@ function installSenpiTradingRuntimeSkillIfNeeded() {
 
   if (cloneResult.status !== 0) {
     console.error(
-      `[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill clone failed (non-fatal):`,
+      `[bootstrap] Senpi skills clone failed (non-fatal):`,
       cloneResult.stderr || cloneResult.stdout
     );
     return;
   }
 
-  const skillSrcDir = path.join(tmpDir, SENPI_TRADING_RUNTIME_SKILL_NAME);
-  if (!exists(skillSrcDir)) {
-    console.error(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill directory not found in cloned repo`);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    return;
+  ensureDir(STATE_SKILLS_DIR);
+
+  for (const skillName of skillsToInstall) {
+    const skillSrcDir = path.join(tmpDir, skillName);
+    if (!exists(skillSrcDir)) {
+      console.error(`[bootstrap] ${skillName} skill directory not found in cloned repo`);
+      continue;
+    }
+
+    const skillDestDir = path.join(STATE_SKILLS_DIR, skillName);
+    fs.cpSync(skillSrcDir, skillDestDir, { recursive: true });
+
+    const sentinelPath = path.join(STATE_DIR, "config", `${skillName}-skill.installed`);
+    ensureDir(path.dirname(sentinelPath));
+    fs.writeFileSync(sentinelPath, new Date().toISOString());
+    console.log(`[bootstrap] ${skillName} skill installed (branch: ${SENPI_SKILLS_BRANCH})`);
   }
 
-  ensureDir(STATE_SKILLS_DIR);
-  fs.cpSync(skillSrcDir, skillDestDir, { recursive: true });
   fs.rmSync(tmpDir, { recursive: true, force: true });
-
-  // Write sentinel so future boots skip the install.
-  ensureDir(path.dirname(sentinelPath));
-  fs.writeFileSync(sentinelPath, new Date().toISOString());
-  console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill installed (branch: ${SENPI_SKILLS_BRANCH})`);
 }
 
 export function bootstrapOpenClaw() {
@@ -604,6 +614,6 @@ export function bootstrapOpenClaw() {
   writeMcporterConfig();
   seedWorkspaceFiles();
   installSenpiRuntimePluginIfNeeded();
-  installSenpiTradingRuntimeSkillIfNeeded();
+  installSenpiSkillsIfNeeded();
   patchOpenClawJson();
 }
