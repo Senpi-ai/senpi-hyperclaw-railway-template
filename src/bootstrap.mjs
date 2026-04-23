@@ -27,10 +27,11 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 /**
  * OpenClaw discovery uses the unscoped npm name as idHint (@senpi-ai/runtime → "runtime").
  * openclaw.plugin.json "id" must match that hint or you get "plugin id mismatch" warnings.
- * npm install spec stays scoped.
+ * npm install spec stays scoped (override with SENPI_RUNTIME_NPM_SPEC).
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC =
+  process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -38,7 +39,8 @@ const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
  */
 const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
 const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
-const SENPI_SKILLS_BRANCH = "main";
+const SENPI_SKILLS_BRANCH = 
+    process.env.SENPI_SKILLS_BRANCH?.trim() || "main";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -174,6 +176,9 @@ function patchOpenClawJson() {
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],
+      // Default reload mode to "restart" so gateway restarts on config changes;
+      // preserve user-customized value if already set.
+      ...(cfg.gateway?.reload?.mode ? {} : { reload: { mode: "restart" } }),
     },
     channels: {
       telegram: (() => {
@@ -232,12 +237,19 @@ function patchOpenClawJson() {
         // Only add Senpi runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false when plugin is not installed)
         if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
           entries["llm-task"] = { enabled: true };
-          entries[SENPI_RUNTIME_PLUGIN_ID] = {
-            enabled: true,
-            config: {
+          const runtimeConfig = {
               stateDir: path.join(STATE_DIR, "senpi-state"),
               apiKey: resolveSenpiToken() || undefined,
-            },
+          };
+          if (process.env.DISABLE_AUTO_UPDATE === "true") {
+            runtimeConfig.autoUpdate = { enabled: false };
+            console.log("[bootstrap] DISABLE_AUTO_UPDATE=true → autoUpdate.enabled set to false");
+          } else {
+            console.log(`[bootstrap] DISABLE_AUTO_UPDATE=${JSON.stringify(process.env.DISABLE_AUTO_UPDATE)} → autoUpdate left at default (enabled)`);
+          }
+          entries[SENPI_RUNTIME_PLUGIN_ID] = {
+            enabled: true,
+            config: runtimeConfig,
           };
         }
         return entries;
@@ -332,10 +344,11 @@ function patchOpenClawJson() {
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    const writtenAutoUpdate = merged.plugins?.entries?.runtime?.config?.autoUpdate;
     console.log(
       "[bootstrap] Senpi runtime plugin configured (stateDir:",
       path.join(STATE_DIR, "senpi-state"),
-      ")",
+      ") autoUpdate:", JSON.stringify(writtenAutoUpdate),
     );
   }
 }
