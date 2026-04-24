@@ -26,6 +26,7 @@ import { runCmd } from "./lib/runCmd.js";
 import { clawArgs, ensureGatewayRunning, restartGateway } from "./gateway.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
+import { findAuthOption } from "./lib/auth-providers.js";
 
 const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
   STATE_DIR,
@@ -310,23 +311,8 @@ export function buildOnboardArgs(payload, gatewayToken) {
     args.push("--auth-choice", payload.authChoice);
 
     const secret = (payload.authSecret || "").trim();
-    const map = {
-      "openai-api-key": "--openai-api-key",
-      apiKey: "--anthropic-api-key",
-      "openrouter-api-key": "--openrouter-api-key",
-      "ai-gateway-api-key": "--ai-gateway-api-key",
-      "moonshot-api-key": "--moonshot-api-key",
-      "kimi-code-api-key": "--kimi-code-api-key",
-      "gemini-api-key": "--gemini-api-key",
-      "zai-api-key": "--zai-api-key",
-      "venice-api-key": "--venice-api-key",
-      "minimax-api": "--minimax-api-key",
-      "minimax-api-lightning": "--minimax-api-key",
-      "synthetic-api-key": "--synthetic-api-key",
-      "opencode-zen": "--opencode-zen-api-key",
-      "venice-api-key": "--venice-api-key",
-    };
-    const flag = map[payload.authChoice];
+    const found = findAuthOption(payload.authChoice);
+    const flag = found?.option?.onboardFlag;
     if (flag && secret) {
       args.push(flag, secret);
     }
@@ -337,6 +323,82 @@ export function buildOnboardArgs(payload, gatewayToken) {
   }
 
   return args;
+}
+
+/**
+ * Write provider-specific config after onboarding (base URL, model catalog,
+ * primary model). Invoked by both interactive setup and auto-onboard so
+ * LiteLLM / similar providers end up identically configured.
+ *
+ * @param {string} authChoice - the selected auth option
+ * @param {{ apiUrl?: string, modelId?: string }} payload - user-provided values (or defaults)
+ * @returns {Promise<string>} log text appended to setup output
+ */
+export async function applyProviderPostOnboardConfig(authChoice, payload = {}) {
+  const found = findAuthOption(authChoice);
+  if (!found) return "";
+
+  const { option } = found;
+  let log = "";
+
+  const providerId =
+    option.value === "litellm-api-key" ? "litellm" : null;
+  if (!providerId) return "";
+
+  if (option.apiUrl) {
+    const baseUrl =
+      (typeof payload.apiUrl === "string" && payload.apiUrl.trim()) ||
+      option.apiUrl.default ||
+      "";
+    if (baseUrl) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", `models.providers.${providerId}.baseUrl`, baseUrl])
+      );
+      log += `\n[${providerId}] set baseUrl=${baseUrl} (exit=${r.code})\n`;
+    }
+  }
+
+  if (Array.isArray(option.models) && option.models.length > 0) {
+    const modelDefs = option.models.map((m) => ({
+      id: m.id,
+      name: m.label || m.id,
+      reasoning: !!m.reasoning,
+      input: Array.isArray(m.input) && m.input.length > 0 ? m.input : ["text"],
+      contextWindow: m.contextWindow || 128000,
+      maxTokens: m.maxTokens || 8192,
+    }));
+    const rm = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        `models.providers.${providerId}.models`,
+        JSON.stringify(modelDefs),
+      ])
+    );
+    log += `\n[${providerId}] set models (count=${modelDefs.length}, exit=${rm.code})\n`;
+
+    const ra = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", `models.providers.${providerId}.api`, "openai-completions"])
+    );
+    log += `\n[${providerId}] set api=openai-completions (exit=${ra.code})\n`;
+  }
+
+  const requestedModelId =
+    (typeof payload.modelId === "string" && payload.modelId.trim()) || option.defaultModelId;
+  if (requestedModelId) {
+    const modelRef = `${providerId}/${requestedModelId}`;
+    const rp = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "agents.defaults.model.primary", modelRef])
+    );
+    log += `\n[${providerId}] set primary model=${modelRef} (exit=${rp.code})\n`;
+  }
+
+  return log;
 }
 
 /**
@@ -489,6 +551,13 @@ console.log(`[auto-onboard] directory created`);
         JSON.stringify(["127.0.0.1", "::1"]),
       ])
     );
+
+    try {
+      const providerLog = await applyProviderPostOnboardConfig(authChoice, {});
+      if (providerLog) console.log(`[auto-onboard] provider config:${providerLog}`);
+    } catch (err) {
+      console.warn(`[auto-onboard] applyProviderPostOnboardConfig failed: ${err}`);
+    }
 
     if (TELEGRAM_BOT_TOKEN) {
       console.log("[auto-onboard] Configuring Telegram channel...");

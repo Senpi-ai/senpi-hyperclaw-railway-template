@@ -150,6 +150,12 @@ export const DESIRED_MODELS = {
   // ── Amazon Bedrock ──
   "amazon-bedrock/anthropic.claude-opus-4-6": { alias: "Opus 4.6 (Bedrock)" },
   "amazon-bedrock/anthropic.claude-sonnet-4-6": { alias: "Sonnet 4.6 (Bedrock)" },
+
+  // ── LiteLLM (Vertex AI via Senpi proxy) ──
+  "litellm/vertex_ai/gemini": { alias: "Vertex Gemini (LiteLLM)" },
+  "litellm/vertex_ai/claude": { alias: "Vertex Claude (LiteLLM)" },
+  "litellm/vertex_ai/qwen": { alias: "Vertex Qwen (LiteLLM)" },
+  "litellm/vertex_ai/gemma": { alias: "Vertex Gemma (LiteLLM)" },
 };
 
 /**
@@ -185,4 +191,5 @@ export const AI_PROVIDER_MODEL_MAP = {
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
   minimax: "minimax/MiniMax-M2.1",
+  litellm: "litellm/vertex_ai/gemini",
 };
