@@ -62,6 +62,16 @@ Set `AI_PROVIDER` to one of the following values, and put the corresponding API 
 | `minimax` | MiniMax (M2.1) | MiniMax API key |
 | `synthetic` | Synthetic (Anthropic-compatible) | Synthetic API key |
 | `opencode-zen` | OpenCode Zen (multi-model proxy) | OpenCode Zen API key |
+| `litellm` | LiteLLM proxy (Vertex AI: Gemini / Claude / Qwen / Gemma) | LiteLLM proxy API key |
+
+#### LiteLLM-specific options
+
+Used only when `AI_PROVIDER=litellm`. Both are optional; omitting them uses the bundled Senpi defaults.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LITELLM_BASE_URL` | `http://litellm.dev.senpi.ai/v1` | Override the LiteLLM proxy URL |
+| `LITELLM_MODEL` | `vertex_ai/gemini` | Vertex AI model id; allowed: `vertex_ai/gemini`, `vertex_ai/claude`, `vertex_ai/qwen`, `vertex_ai/gemma` |
 
 **Example** (Anthropic):
 

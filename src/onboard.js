@@ -13,6 +13,8 @@ import {
   TELEGRAM_USERNAME,
   AI_PROVIDER,
   AI_API_KEY,
+  LITELLM_BASE_URL,
+  LITELLM_MODEL,
   configPath,
   isConfigured,
   PROVIDER_TO_AUTH_CHOICE,
@@ -47,6 +49,12 @@ export function envFingerprintForOnboard() {
     TELEGRAM_USERNAME,
     SENPI_AUTH_TOKEN: process.env.SENPI_AUTH_TOKEN?.trim() || "",
   };
+  // Only include LiteLLM-specific keys when the deployment actually uses LiteLLM,
+  // so existing non-LiteLLM deployments don't see a fingerprint change on upgrade.
+  if (AI_PROVIDER === "litellm") {
+    payload.LITELLM_BASE_URL = LITELLM_BASE_URL;
+    payload.LITELLM_MODEL = LITELLM_MODEL;
+  }
   return crypto
     .createHash("sha256")
     .update(JSON.stringify(payload), "utf8")
@@ -387,8 +395,15 @@ export async function applyProviderPostOnboardConfig(authChoice, payload = {}) {
     log += `\n[${providerId}] set api=openai-completions (exit=${ra.code})\n`;
   }
 
-  const requestedModelId =
+  let requestedModelId =
     (typeof payload.modelId === "string" && payload.modelId.trim()) || option.defaultModelId;
+  if (Array.isArray(option.models) && requestedModelId) {
+    const known = option.models.some((m) => m.id === requestedModelId);
+    if (!known) {
+      log += `\n[${providerId}] requested model '${requestedModelId}' not in allowlist; using default '${option.defaultModelId}'\n`;
+      requestedModelId = option.defaultModelId;
+    }
+  }
   if (requestedModelId) {
     const modelRef = `${providerId}/${requestedModelId}`;
     const rp = await runCmd(
@@ -553,7 +568,14 @@ console.log(`[auto-onboard] directory created`);
     );
 
     try {
-      const providerLog = await applyProviderPostOnboardConfig(authChoice, {});
+      const providerPayload =
+        authChoice === "litellm-api-key"
+          ? { apiUrl: LITELLM_BASE_URL, modelId: LITELLM_MODEL }
+          : {};
+      const providerLog = await applyProviderPostOnboardConfig(
+        authChoice,
+        providerPayload
+      );
       if (providerLog) console.log(`[auto-onboard] provider config:${providerLog}`);
     } catch (err) {
       console.warn(`[auto-onboard] applyProviderPostOnboardConfig failed: ${err}`);

@@ -46,6 +46,9 @@ export const AI_API_KEY = stripBearer(
   process.env.AI_API_KEY?.trim() || ""
 );
 
+export const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL?.trim() || "";
+export const LITELLM_MODEL = process.env.LITELLM_MODEL?.trim() || "";
+
 /** Map AI_PROVIDER (env) to openclaw --auth-choice value for auto-onboard. */
 export const PROVIDER_TO_AUTH_CHOICE = buildProviderToAuthChoice();
 
