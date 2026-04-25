@@ -285,7 +285,15 @@ function patchOpenClawJson() {
   const available = PROVIDER_DEFAULTS.filter((p) => process.env[p.key]?.trim());
 
   if (available.length === 0 && process.env.AI_PROVIDER?.trim() && process.env.AI_API_KEY?.trim()) {
-    const aiModel = AI_PROVIDER_MODEL_MAP[process.env.AI_PROVIDER.trim().toLowerCase()];
+    const provider = process.env.AI_PROVIDER.trim().toLowerCase();
+    let aiModel = AI_PROVIDER_MODEL_MAP[provider];
+    // Honor LITELLM_MODEL override so auto-onboard respects the operator's
+    // model selection. Without this, AI_PROVIDER_MODEL_MAP['litellm'] always
+    // wins on every redeploy and silently reverts to the default.
+    if (provider === "litellm") {
+      const litellmModel = process.env.LITELLM_MODEL?.trim();
+      if (litellmModel) aiModel = `litellm/${litellmModel}`;
+    }
     if (aiModel) available.push({ key: "AI_API_KEY", model: aiModel });
   }
 
