@@ -174,6 +174,9 @@ function patchOpenClawJson() {
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],
+      // Default reload mode to "restart" so gateway restarts on config changes;
+      // preserve user-customized value if already set.
+      ...(cfg.gateway?.reload?.mode ? {} : { reload: { mode: "restart" } }),
     },
     channels: {
       telegram: (() => {
