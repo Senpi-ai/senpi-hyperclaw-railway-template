@@ -158,6 +158,9 @@ function patchOpenClawJson() {
         maxConcurrent: 10,
         subagents: { maxConcurrent: 12 },
         thinkingDefault: "off",
+        // Cap images to 2000px max-dimension: Anthropic enforces this limit for many-image requests.
+        // See: https://docs.openclaw.ai (agents.defaults.imageMaxDimensionPx, default=uncapped if not set)
+        imageMaxDimensionPx: 2000,
       },
     },
     // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
