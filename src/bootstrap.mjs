@@ -127,6 +127,11 @@ function patchOpenClawJson() {
 
   // Remove any invalid keys that would cause gateway startup to fail.
   delete cfg.mcpServers;
+  // Strip invalid plugin entries that cause openclaw v2026 config validation failure.
+  if (cfg.plugins?.entries) delete cfg.plugins.entries[SENPI_RUNTIME_PLUGIN_ID];
+  if (Array.isArray(cfg.plugins?.allow)) {
+    cfg.plugins.allow = cfg.plugins.allow.filter(id => id !== SENPI_RUNTIME_PLUGIN_ID);
+    }
 
   // Union with existing allow so user-installed plugins stay permitted (deepMerge replaces arrays).
   const existingPluginAllow = Array.isArray(cfg.plugins?.allow)
@@ -134,7 +139,7 @@ function patchOpenClawJson() {
     : [];
   const bootstrapPluginAllow =
     process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false"
-      ? ["telegram", "llm-task", SENPI_RUNTIME_PLUGIN_ID]
+      ? ["telegram", "llm-task"]
       : ["telegram"];
   let pluginsAllow = [...new Set([...existingPluginAllow, ...bootstrapPluginAllow])];
   // Do not keep Senpi runtime plugin in allow when disabled.
