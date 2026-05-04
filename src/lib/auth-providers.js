@@ -154,7 +154,7 @@ export const AUTH_PROVIDERS = [
   {
     value: "litellm",
     label: "LiteLLM",
-    hint: "Unified gateway (Vertex AI: Gemini/Claude/Qwen/Gemma)",
+    hint: "Unified gateway (Vertex AI: Gemini/Claude/Qwen/Gemma, DeepSeek V4)",
     envAlias: "litellm",
     defaultAuthChoice: "litellm-api-key",
     options: [
@@ -173,6 +173,8 @@ export const AUTH_PROVIDERS = [
           { id: "vertex_ai/claude", label: "Vertex AI — Claude", contextWindow: 2000000, input: ["text", "image"], reasoning: true },
           { id: "vertex_ai/qwen", label: "Vertex AI — Qwen", contextWindow: 256000, input: ["text"] },
           { id: "vertex_ai/gemma", label: "Vertex AI — Gemma", contextWindow: 256000, input: ["text"] },
+          { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", contextWindow: 1000000, input: ["text"], reasoning: true },
+          { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", contextWindow: 1000000, input: ["text"], reasoning: true },
         ],
         defaultModelId: "vertex_ai/gemini",
       },
