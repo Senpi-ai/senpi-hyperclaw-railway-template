@@ -24,7 +24,7 @@ WORKDIR /openclaw
 # - If not set, falls back to v2026.2.22
 ARG OPENCLAW_VERSION
 RUN set -eux; \
-  REF="${OPENCLAW_VERSION:-v2026.2.22}"; \
+  REF="${OPENCLAW_VERSION:-v2026.4.26}"; \
   echo "✓ Using OpenClaw ref: ${REF}"; \
   git clone --depth 1 --branch "${REF}" https://github.com/openclaw/openclaw.git .
 
