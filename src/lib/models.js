@@ -158,6 +158,7 @@ export const DESIRED_MODELS = {
   "litellm/vertex_ai/gemma": { alias: "Vertex Gemma (LiteLLM)" },
   "litellm/deepseek-v4-flash": { alias: "DeepSeek V4 Flash (LiteLLM)" },
   "litellm/deepseek-v4-pro": { alias: "DeepSeek V4 Pro (LiteLLM)" },
+  "litellm/qwen3.6-27b": { alias: "Qwen3.6 27B (LiteLLM)" },
 };
 
 /**

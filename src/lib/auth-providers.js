@@ -173,6 +173,7 @@ export const AUTH_PROVIDERS = [
           { id: "vertex_ai/claude", label: "Vertex AI — Claude", contextWindow: 2000000, input: ["text", "image"], reasoning: true },
           { id: "vertex_ai/qwen", label: "Vertex AI — Qwen", contextWindow: 256000, input: ["text"] },
           { id: "vertex_ai/gemma", label: "Vertex AI — Gemma", contextWindow: 256000, input: ["text"] },
+          { id: "qwen3.6-27b", label: "Qwen3.6 27B", contextWindow: 262144, input: ["text", "image"], reasoning: true },
           { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", contextWindow: 1000000, input: ["text"], reasoning: true },
           { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", contextWindow: 1000000, input: ["text"], reasoning: true },
         ],
