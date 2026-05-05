@@ -9,10 +9,10 @@
  */
 export const DESIRED_MODELS = {
   // ── Anthropic ──
-  "anthropic/claude-opus-4-6": { alias: "Opus 4.6" },
   "anthropic/claude-sonnet-4-6": { alias: "Sonnet 4.6" },
   "anthropic/claude-sonnet-4-5": { alias: "Sonnet 4.5" },
-  "anthropic/claude-opus-4-5": { alias: "Opus 4.5" },
+  "anthropic/claude-opus-4-6": { alias: "Opus 4.6" },
+  "anthropic/claude-opus-4-7": { alias: "Opus 4.7" },
   "anthropic/claude-haiku-4-5": { alias: "Haiku 4.5" },
   "anthropic/claude-haiku-3-5": { alias: "Haiku 3.5" },
   "anthropic/claude-sonnet-4": { alias: "Sonnet 4" },
@@ -157,7 +157,7 @@ export const DESIRED_MODELS = {
  * Checked in order — first match wins as primary, rest become fallbacks.
  */
 export const PROVIDER_DEFAULTS = [
-  { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-6" },
+  { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-7" },
   { key: "OPENAI_API_KEY", model: "openai/gpt-5.2" },
   { key: "GEMINI_API_KEY", model: "google/gemini-3.1-pro-preview" },
   { key: "XAI_API_KEY", model: "xai/grok-3" },
@@ -175,7 +175,7 @@ export const PROVIDER_DEFAULTS = [
  * env var matched (used by auto-onboard with AI_PROVIDER + AI_API_KEY).
  */
 export const AI_PROVIDER_MODEL_MAP = {
-  anthropic: "anthropic/claude-opus-4-6",
+  anthropic: "anthropic/claude-opus-4-7",
   openai: "openai/gpt-5.2",
   gemini: "google/gemini-3.1-pro-preview",
   google: "google/gemini-3.1-pro-preview",
