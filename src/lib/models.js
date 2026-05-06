@@ -159,6 +159,7 @@ export const DESIRED_MODELS = {
   "litellm/deepseek-v4-flash": { alias: "DeepSeek V4 Flash (LiteLLM)" },
   "litellm/deepseek-v4-pro": { alias: "DeepSeek V4 Pro (LiteLLM)" },
   "litellm/qwen3.6-27b": { alias: "Qwen3.6 27B (LiteLLM)" },
+  "litellm/senpi": { alias: "Gemma 4 Senpi" },
 };
 
 /**
@@ -194,5 +195,5 @@ export const AI_PROVIDER_MODEL_MAP = {
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
   minimax: "minimax/MiniMax-M2.1",
-  litellm: "litellm/vertex_ai/gemini",
+  litellm: "litellm/senpi",
 };
