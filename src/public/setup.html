@@ -29,6 +29,17 @@
     <label>Auth method</label>
     <select id="authChoice"></select>
 
+    <div id="apiUrlWrap" hidden>
+      <label>API URL</label>
+      <input id="apiUrl" type="url" placeholder="" />
+      <div class="muted" id="apiUrlHelp" style="margin-top: 0.25rem"></div>
+    </div>
+
+    <div id="modelWrap" hidden>
+      <label>Model</label>
+      <select id="modelId"></select>
+    </div>
+
     <label>Key / Token (if required)</label>
     <input id="authSecret" type="password" placeholder="Paste API key / token if applicable" />
 

@@ -5,13 +5,62 @@
   var statusEl = document.getElementById('status');
   var authGroupEl = document.getElementById('authGroup');
   var authChoiceEl = document.getElementById('authChoice');
+  var apiUrlWrap = document.getElementById('apiUrlWrap');
+  var apiUrlEl = document.getElementById('apiUrl');
+  var apiUrlHelp = document.getElementById('apiUrlHelp');
+  var modelWrap = document.getElementById('modelWrap');
+  var modelEl = document.getElementById('modelId');
   var logEl = document.getElementById('log');
+
+  var currentGroups = [];
 
   function setStatus(s) {
     statusEl.textContent = s;
   }
 
+  function findOption(authChoice) {
+    for (var i = 0; i < currentGroups.length; i++) {
+      var opts = currentGroups[i].options || [];
+      for (var j = 0; j < opts.length; j++) {
+        if (opts[j].value === authChoice) return opts[j];
+      }
+    }
+    return null;
+  }
+
+  function applyOptionMeta() {
+    var opt = findOption(authChoiceEl.value);
+
+    if (opt && opt.apiUrl) {
+      apiUrlEl.value = opt.apiUrl.default || '';
+      apiUrlEl.placeholder = opt.apiUrl.placeholder || '';
+      apiUrlHelp.textContent = opt.apiUrl.help || '';
+      apiUrlWrap.hidden = false;
+    } else {
+      apiUrlEl.value = '';
+      apiUrlHelp.textContent = '';
+      apiUrlWrap.hidden = true;
+    }
+
+    if (opt && opt.models && opt.models.length > 0) {
+      modelEl.innerHTML = '';
+      for (var i = 0; i < opt.models.length; i++) {
+        var m = opt.models[i];
+        var mopt = document.createElement('option');
+        mopt.value = m.id;
+        mopt.textContent = m.label || m.id;
+        modelEl.appendChild(mopt);
+      }
+      modelEl.value = opt.defaultModelId || opt.models[0].id;
+      modelWrap.hidden = false;
+    } else {
+      modelEl.innerHTML = '';
+      modelWrap.hidden = true;
+    }
+  }
+
   function renderAuth(groups) {
+    currentGroups = groups || [];
     authGroupEl.innerHTML = '';
     for (var i = 0; i < groups.length; i++) {
       var g = groups[i];
@@ -35,7 +84,10 @@
         opt2.textContent = o.label + (o.hint ? ' - ' + o.hint : '');
         authChoiceEl.appendChild(opt2);
       }
+      applyOptionMeta();
     };
+
+    authChoiceEl.onchange = applyOptionMeta;
 
     authGroupEl.onchange();
   }
@@ -74,6 +126,8 @@
       flow: document.getElementById('flow').value,
       authChoice: authChoiceEl.value,
       authSecret: document.getElementById('authSecret').value,
+      apiUrl: apiUrlWrap.hidden ? '' : apiUrlEl.value,
+      modelId: modelWrap.hidden ? '' : modelEl.value,
       telegramToken: document.getElementById('telegramToken').value,
       discordToken: document.getElementById('discordToken').value,
       slackBotToken: document.getElementById('slackBotToken').value,
