@@ -456,54 +456,31 @@ export function createSetupRouter() {
       fs.writeFileSync(senpiTokenPath, newToken);
       console.log("[senpi-token] Persisted token to config/senpi.token");
 
-      const mcporterPath =
-        process.env.MCPORTER_CONFIG ||
-        path.join(STATE_DIR, "config", "mcporter.json");
-
-      let config;
-      try {
-        config = JSON.parse(fs.readFileSync(mcporterPath, "utf8"));
-      } catch {
-        config = { mcpServers: {}, imports: [] };
+      const mcpUrl =
+        process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+      const senpiConfig = JSON.stringify({
+        url: mcpUrl,
+        transport: "streamable-http",
+        headers: { Authorization: `Bearer ${newToken}` },
+      });
+      const mcpSet = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["mcp", "set", "senpi", senpiConfig])
+      );
+      if (mcpSet.code !== 0) {
+        console.error(
+          `[senpi-token] openclaw mcp set senpi failed: exit=${mcpSet.code} output=${mcpSet.output.trim()}`
+        );
+        return res.status(500).json({
+          ok: false,
+          error: `openclaw mcp set failed: ${mcpSet.output.trim()}`,
+        });
       }
-      if (!config.mcpServers) config.mcpServers = {};
-
-      if (
-        config.mcpServers.senpi &&
-        typeof config.mcpServers.senpi === "object"
-      ) {
-        if (!config.mcpServers.senpi.env)
-          config.mcpServers.senpi.env = {};
-        config.mcpServers.senpi.env.SENPI_AUTH_TOKEN = newToken;
-      } else {
-        const mcpUrl =
-          process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
-        config.mcpServers.senpi = {
-          command: "npx",
-          args: [
-            "mcp-remote",
-            mcpUrl,
-            "--header",
-            "Authorization: Bearer ${SENPI_AUTH_TOKEN}",
-          ],
-          env: { SENPI_AUTH_TOKEN: newToken },
-        };
-      }
-
-      fs.writeFileSync(mcporterPath, JSON.stringify(config, null, 2));
-      console.log("[senpi-token] Updated mcporter.json with new token");
-
-      try {
-        const kill = await runCmd("pkill", ["-f", "mcp-remote"]);
-        console.log(`[senpi-token] pkill mcp-remote: exit=${kill.code}`);
-      } catch {
-        // ok
-      }
+      console.log("[senpi-token] Updated Senpi MCP config via openclaw mcp set");
 
       return res.json({
         ok: true,
-        message:
-          "Token updated. mcp-remote processes killed — next MCP call will use the new token.",
+        message: "Token updated. Senpi MCP reconfigured.",
       });
     } catch (err) {
       console.error(`[senpi-token] Error: ${err}`);
@@ -558,7 +535,6 @@ export function createSetupRouter() {
       const p = entryPath.replace(/\\/g, "/");
       if (p.includes("gateway.token") || p.endsWith(".token")) return true;
       if (p.includes("openclaw.json")) return true;
-      if (p.includes("mcporter.json")) return true;
       return false;
     };
 

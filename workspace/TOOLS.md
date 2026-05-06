@@ -6,10 +6,10 @@ This is your cheat sheet. Environment-specific stuff that doesn't belong in skil
 
 - **Server name:** `senpi`
 - **Auth:** JWT token (configured at setup)
+- **Transport:** `streamable-http` — registered via `openclaw mcp set senpi` during bootstrap
 - **Connection:** Pre-configured via OpenClaw, no manual setup needed
 - The MCP server provides its own instructions and tool descriptions — read them at runtime
 - `read_senpi_guide(uri=senpi://guides/senpi-overview)` is called during BOOTSTRAP.md startup (Step 2)
-- **CRITICAL:** You must read the `mcporter` skill file (`/data/.openclaw/skills/mcporter/SKILL.md`) and strictly follow its syntax rules before attempting to call any Senpi MCP tools. Do not guess the CLI arguments.
 
 ## Telegram
 
