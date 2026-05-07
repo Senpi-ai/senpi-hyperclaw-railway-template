@@ -16,6 +16,21 @@ import { isOnboardingInProgress } from "../onboard.js";
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD);
 
+// Service workers don't forward Basic Auth credentials, so SW-initiated fetches
+// for these public assets get 401 + WWW-Authenticate, which makes the browser
+// re-prompt the auth dialog. Bypass auth for GETs of these specific paths; the
+// gateway Bearer token is still injected by the proxyReq handler below.
+const PUBLIC_ASSET_PATHS = new Set([
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/favicon-32.png",
+  "/control-ui-config.json",
+]);
+
+function isPublicAssetRequest(req) {
+  return req.method === "GET" && PUBLIC_ASSET_PATHS.has(req.path);
+}
+
 function debug(...args) {
   if (DEBUG) console.log(...args);
 }
@@ -170,7 +185,7 @@ export async function controlUiHandler(req, res, next) {
  * Catch-all: require auth, then proxy to gateway (or show onboarding / redirect to /setup).
  */
 export async function catchAllMiddleware(req, res) {
-  if (!checkProxyAuth(req, res)) return;
+  if (!isPublicAssetRequest(req) && !checkProxyAuth(req, res)) return;
 
   if (!isConfigured() && !req.path.startsWith("/setup")) {
     if (isOnboardingInProgress()) {
