@@ -182,6 +182,16 @@ export const AUTH_PROVIDERS = [
       },
     ],
   },
+  {
+    value: "together",
+    label: "Together AI",
+    hint: "Serverless multi-model API (Gemma, Kimi, Llama, DeepSeek)",
+    envAlias: "together",
+    defaultAuthChoice: "together-api-key",
+    options: [
+      { value: "together-api-key", label: "Together AI API key", onboardFlag: "--together-api-key" },
+    ],
+  }
 ];
 
 /**

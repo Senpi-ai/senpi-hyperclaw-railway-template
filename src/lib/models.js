@@ -70,6 +70,7 @@ export const DESIRED_MODELS = {
   "together/moonshotai/Kimi-K2.5": { alias: "Kimi K2.5 (Together)" },
   "together/meta-llama/llama-3.3-70b-instruct-turbo": { alias: "Llama 3.3 70B (Together)" },
   "together/deepseek/deepseek-r1": { alias: "DeepSeek R1 (Together)" },
+  "together/google/gemma-4-31B-it": { alias: "Gemma 4 31B-it (Together)" },
 
   // ── Z.AI / GLM ──
   "zai/glm-5": { alias: "GLM-5" },
@@ -80,6 +81,7 @@ export const DESIRED_MODELS = {
   "moonshot/kimi-k2.5": { alias: "Kimi K2.5" },
   "moonshot/kimi-k2-thinking": { alias: "Kimi K2 Thinking" },
   "moonshot/kimi-k2-thinking-turbo": { alias: "Kimi K2 Thinking Turbo" },
+  "moonshot/kimi-k2.6": { alias: "Kimi K2.6" },
 
   // ── Venice AI — Private models (no logging) ──
   "venice/kimi-k2-5": { alias: "Kimi K2.5 (Venice)" },
