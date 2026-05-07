@@ -142,6 +142,8 @@ export const DESIRED_MODELS = {
   "openrouter/deepseek/deepseek-chat": { alias: "DeepSeek Chat (OpenRouter)" },
   "openrouter/google/gemini-3.1-pro-preview": { alias: "Gemini 3.1 Pro (OpenRouter)" },
   "openrouter/google/gemini-2.5-pro": { alias: "Gemini 2.5 Pro (OpenRouter)" },
+  "openrouter/meta-llama/llama-4-maverick": { alias: "Llama 4 maverick (OpenRouter)" },
+  "openrouter/z-ai/glm-5.1": { alias: "GLM 5.1 (OpenRouter)" },
 
   // ── OpenCode Zen ──
   "opencode/claude-opus-4-6": { alias: "Opus 4.6 (OpenCode)" },
@@ -178,7 +180,7 @@ export const PROVIDER_DEFAULTS = [
   { key: "GROQ_API_KEY", model: "groq/llama-3.3-70b" },
   { key: "TOGETHER_API_KEY", model: "together/moonshotai/Kimi-K2.5" },
   { key: "ZAI_API_KEY", model: "zai/glm-5" },
-  { key: "MOONSHOT_API_KEY", model: "moonshot/kimi-k2.5" },
+  { key: "MOONSHOT_API_KEY", model: "moonshot/kimi-k2.6" },
   { key: "VENICE_API_KEY", model: "venice/llama-3.3-70b" },
   { key: "OPENROUTER_API_KEY", model: "openrouter/anthropic/claude-sonnet-4-5" },
 ];
@@ -193,7 +195,7 @@ export const AI_PROVIDER_MODEL_MAP = {
   gemini: "google/gemini-3.1-pro-preview",
   google: "google/gemini-3.1-pro-preview",
   openrouter: "openrouter/anthropic/claude-sonnet-4-5",
-  moonshot: "moonshot/kimi-k2.5",
+  moonshot: "moonshot/kimi-k2.6",
   zai: "zai/glm-5",
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
