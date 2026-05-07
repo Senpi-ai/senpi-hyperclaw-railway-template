@@ -67,10 +67,11 @@ export const DESIRED_MODELS = {
   "mistral/codestral-latest": { alias: "Codestral" },
 
   // ── Together AI ──
-  "together/moonshotai/Kimi-K2.5": { alias: "Kimi K2.5 (Together)" },
   "together/meta-llama/llama-3.3-70b-instruct-turbo": { alias: "Llama 3.3 70B (Together)" },
   "together/deepseek/deepseek-r1": { alias: "DeepSeek R1 (Together)" },
   "together/google/gemma-4-31B-it": { alias: "Gemma 4 31B-it (Together)" },
+  "together/openai/gpt-oss-120b": { alias: "OpenAI OSS (Together)" },
+  "together/mistralai/Ministral-3-14B-Instruct-2512": { alias: "Mistral (Together)" },
 
   // ── Z.AI / GLM ──
   "zai/glm-5": { alias: "GLM-5" },
@@ -81,7 +82,6 @@ export const DESIRED_MODELS = {
   "moonshot/kimi-k2.5": { alias: "Kimi K2.5" },
   "moonshot/kimi-k2-thinking": { alias: "Kimi K2 Thinking" },
   "moonshot/kimi-k2-thinking-turbo": { alias: "Kimi K2 Thinking Turbo" },
-  "moonshot/kimi-k2.6": { alias: "Kimi K2.6" },
 
   // ── Venice AI — Private models (no logging) ──
   "venice/kimi-k2-5": { alias: "Kimi K2.5 (Venice)" },
@@ -108,8 +108,6 @@ export const DESIRED_MODELS = {
   "venice/zai-org-glm-4.7": { alias: "GLM 4.7 (Venice)" },
   "venice/zai-org-glm-4.7-flash": { alias: "GLM 4.7 Flash (Venice)" },
   "venice/zai-org-glm-5": { alias: "GLM 5 (Venice)" },
-  "venice/minimax-m21": { alias: "MiniMax M2.1 (Venice)" },
-  "venice/minimax-m25": { alias: "MiniMax M2.5 (Venice)" },
 
   // ── Venice AI — Anonymized models (via proxy) ──
   "venice/claude-opus-4-6": { alias: "Claude Opus 4.6 (Venice)" },
@@ -144,6 +142,8 @@ export const DESIRED_MODELS = {
   "openrouter/google/gemini-2.5-pro": { alias: "Gemini 2.5 Pro (OpenRouter)" },
   "openrouter/meta-llama/llama-4-maverick": { alias: "Llama 4 maverick (OpenRouter)" },
   "openrouter/z-ai/glm-5.1": { alias: "GLM 5.1 (OpenRouter)" },
+  "openrouter/moonshotai/kimi-k2.6": { alias: "Kimi 2.6 (OpenRouter)" },
+  "openrouter/minimax/minimax-m2.5": { alias: "minimax-m2.5 (OpenRouter)" },
 
   // ── OpenCode Zen ──
   "opencode/claude-opus-4-6": { alias: "Opus 4.6 (OpenCode)" },
@@ -164,7 +164,6 @@ export const DESIRED_MODELS = {
   "litellm/deepseek-v4-pro": { alias: "DeepSeek V4 Pro (LiteLLM)" },
   "litellm/senpi": { alias: "Gemma 4 Senpi" },
   "litellm/qwen3.6-35b-a3b": { alias: "qwen3.6-35b-a3b" },
-  "litellm/kimi-k2.6": { alias: "kimi-k2.6" },
 };
 
 /**
