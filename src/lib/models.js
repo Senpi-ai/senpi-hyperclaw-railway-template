@@ -161,6 +161,7 @@ export const DESIRED_MODELS = {
   "litellm/senpi": { alias: "Gemma 4 Senpi" },
   "litellm/qwen3.6-35b-a3b": { alias: "qwen3.6-35b-a3b" },
   "litellm/kimi-k2.6": { alias: "kimi-k2.6" },
+  "litellm/google/gemma-4-31B-it": { alias: "google/gemma-4-31B-it" },
 };
 
 /**
