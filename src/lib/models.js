@@ -164,7 +164,6 @@ export const DESIRED_MODELS = {
   "litellm/llama-4-maverick": { alias: "Llama 4 Maverick (LiteLLM)" },
   "litellm/glm-5.1": { alias: "GLM 5.1 (LiteLLM)" },
   "litellm/minimax-m2.5": { alias: "MiniMax M2.5 (LiteLLM)" },
-  "litellm/minimax-m2.5": { alias: "MiniMax M2.5 (LiteLLM)" },
   "litellm/ministral-14b": { alias: "Ministral 14B (LiteLLM)" },
 };
 
