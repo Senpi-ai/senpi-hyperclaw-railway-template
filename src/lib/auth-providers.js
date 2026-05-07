@@ -92,17 +92,6 @@ export const AUTH_PROVIDERS = [
     ],
   },
   {
-    value: "minimax",
-    label: "MiniMax",
-    hint: "M2.1 (recommended)",
-    envAlias: "minimax",
-    defaultAuthChoice: "minimax-api",
-    options: [
-      { value: "minimax-api", label: "MiniMax M2.1", onboardFlag: "--minimax-api-key" },
-      { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning", onboardFlag: "--minimax-api-key" },
-    ],
-  },
-  {
     value: "qwen",
     label: "Qwen",
     hint: "OAuth",

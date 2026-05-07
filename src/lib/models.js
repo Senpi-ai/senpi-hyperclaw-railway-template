@@ -126,9 +126,6 @@ export const DESIRED_MODELS = {
   "venice/grok-41-fast": { alias: "Grok 4.1 Fast (Venice)" },
   "venice/grok-code-fast-1": { alias: "Grok Code Fast (Venice)" },
 
-  // ── MiniMax ──
-  "minimax/MiniMax-M2.1": { alias: "MiniMax M2.1" },
-  "minimax/MiniMax-M2.1-lightning": { alias: "MiniMax M2.1 Lightning" },
 
   // ── NVIDIA ──
   "nvidia/nvidia/llama-3.1-nemotron-70b-instruct": { alias: "Nemotron 70B" },
@@ -199,7 +196,6 @@ export const AI_PROVIDER_MODEL_MAP = {
   zai: "zai/glm-5",
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
-  minimax: "minimax/MiniMax-M2.1",
   litellm: "litellm/senpi",
   together: "together/moonshotai/Kimi-K2.5",
   xai: "xai/grok-3",
