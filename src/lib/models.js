@@ -163,7 +163,6 @@ export const DESIRED_MODELS = {
   "litellm/senpi": { alias: "Gemma 4 Senpi" },
   "litellm/qwen3.6-35b-a3b": { alias: "qwen3.6-35b-a3b" },
   "litellm/kimi-k2.6": { alias: "kimi-k2.6" },
-  "litellm/google/gemma-4-31B-it": { alias: "google/gemma-4-31B-it" },
 };
 
 /**
@@ -199,5 +198,8 @@ export const AI_PROVIDER_MODEL_MAP = {
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
   minimax: "minimax/MiniMax-M2.1",
-  litellm: "litellm/gemini",
+  litellm: "litellm/senpi",
+  together: "together/moonshotai/Kimi-K2.5",
+  xai: "xai/grok-3",
+  groq: "groq/llama-3.3-70b",
 };
