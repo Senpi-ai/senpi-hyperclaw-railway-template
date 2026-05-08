@@ -170,7 +170,7 @@ export const AUTH_PROVIDERS = [
           { id: "glm-5.1", label: "GLM 5.1 (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
           { id: "minimax-m2.5", label: "MiniMax M2.5 (via OpenRouter)", contextWindow: 1000000, input: ["text"], reasoning: true },
           { id: "ministral-14b", label: "Ministral 14B (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
-          { id: "llama-4-maverick", label: "Llama 4 Maverick (via SambaNova)", contextWindow: 65536, input: ["text", "image"], reasoning: true }
+          { id: "llama-4-maverick", label: "Llama 4 Maverick (via SambaNova)", contextWindow: 128000, input: ["text", "image"], reasoning: true }
         ],
         defaultModelId: "senpi",
       },
