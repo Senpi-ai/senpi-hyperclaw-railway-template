@@ -69,7 +69,6 @@ export const DESIRED_MODELS = {
   // ── Together AI ──
   "together/meta-llama/llama-3.3-70b-instruct-turbo": { alias: "Llama 3.3 70B (Together)" },
   "together/deepseek/deepseek-r1": { alias: "DeepSeek R1 (Together)" },
-  "together/google/gemma-4-31B-it": { alias: "Gemma 4 31B-it (Together)" },
   "together/openai/gpt-oss-120b": { alias: "OpenAI OSS (Together)" },
   "together/mistralai/Ministral-3-14B-Instruct-2512": { alias: "Mistral (Together)" },
 
@@ -100,7 +99,6 @@ export const DESIRED_MODELS = {
   "venice/deepseek-v3.2": { alias: "DeepSeek V3.2 (Venice)" },
   "venice/venice-uncensored": { alias: "Venice Uncensored" },
   "venice/mistral-31-24b": { alias: "Mistral 3.1 24B (Venice)" },
-  "venice/google-gemma-3-27b-it": { alias: "Gemma 3 27B (Venice)" },
   "venice/openai-gpt-oss-120b": { alias: "GPT OSS 120B (Venice)" },
   "venice/nvidia-nemotron-3-nano-30b-a3b": { alias: "Nemotron 3 Nano 30B (Venice)" },
   "venice/olafangensan-glm-4.7-flash-heretic": { alias: "GLM 4.7 Flash Heretic (Venice)" },
@@ -152,16 +150,15 @@ export const DESIRED_MODELS = {
   "litellm/vertex_ai/gemini": { alias: "Vertex Gemini (LiteLLM)" },
   "litellm/vertex_ai/claude": { alias: "Vertex Claude (LiteLLM)" },
   "litellm/vertex_ai/qwen": { alias: "Vertex Qwen (LiteLLM)" },
-  "litellm/vertex_ai/gemma": { alias: "Vertex Gemma (LiteLLM)" },
   "litellm/deepseek-v4-flash": { alias: "DeepSeek V4 Flash (LiteLLM)" },
   "litellm/deepseek-v4-pro": { alias: "DeepSeek V4 Pro (LiteLLM)" },
-  "litellm/senpi": { alias: "Gemma 4 Senpi" },
   "litellm/qwen3.6-35b-a3b": { alias: "qwen3.6-35b-a3b" },
   "litellm/kimi-k2.6": { alias: "Kimi K2.6 (LiteLLM)" },
   "litellm/llama-4-maverick": { alias: "Llama 4 Maverick (LiteLLM)" },
   "litellm/glm-5.1": { alias: "GLM 5.1 (LiteLLM)" },
   "litellm/minimax-m2.5": { alias: "MiniMax M2.5 (LiteLLM)" },
   "litellm/ministral-14b": { alias: "Ministral 14B (LiteLLM)" },
+  "litellm/gemma-4-31b-it": { alias: "gemma-4-31b-it (LiteLLM)" },
 };
 
 /**
