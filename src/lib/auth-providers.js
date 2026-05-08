@@ -167,10 +167,10 @@ export const AUTH_PROVIDERS = [
           { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", contextWindow: 1000000, input: ["text"], reasoning: true },
           { id: "senpi", label: "Gemma 4 Senpi", contextWindow: 1000000, input: ["text"], reasoning: true },
           { id: "kimi-k2.6", label: "Kimi K2.6", contextWindow: 256000, input: ["text"], reasoning: true },
-          { id: "llama-4-maverick", label: "Llama 4 Maverick (via OpenRouter)", contextWindow: 1000000, input: ["text", "image"], reasoning: false },
           { id: "glm-5.1", label: "GLM 5.1 (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
           { id: "minimax-m2.5", label: "MiniMax M2.5 (via OpenRouter)", contextWindow: 1000000, input: ["text"], reasoning: true },
-          { id: "ministral-14b", label: "Ministral 14B (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: false },
+          { id: "ministral-14b", label: "Ministral 14B (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
+          { id: "llama-4-maverick", label: "Llama 4 Maverick (via SambaNova)", contextWindow: 65536, input: ["text", "image"], reasoning: true }
         ],
         defaultModelId: "senpi",
       },
