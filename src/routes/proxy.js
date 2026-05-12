@@ -9,12 +9,16 @@ import {
   SETUP_PASSWORD,
   DEBUG,
 } from "../lib/config.js";
-import { tokenLogSafe, secureCompare, createCheckProxyAuth } from "../lib/auth.js";
+import { tokenLogSafe, createCheckProxyAuth, verifySocketAuth } from "../lib/auth.js";
 import { ensureGatewayRunning } from "../gateway.js";
 import { isOnboardingInProgress } from "../onboard.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
-const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD);
+// Accept Basic <SETUP_PASSWORD> or Bearer <gatewayToken>. The wrapper hands the
+// gateway token to the browser via AUTO_TOKEN_SCRIPT below, so Control UI fetches
+// and the service worker send it back as Bearer — the wrapper needs to recognize
+// its own token, not just Basic.
+const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD, gatewayToken);
 
 // Service workers don't forward Basic Auth credentials, so SW-initiated fetches
 // for these public assets get 401 + WWW-Authenticate, which makes the browser
@@ -231,20 +235,7 @@ export function attachUpgrade(server) {
       socket.destroy();
       return;
     }
-    if (!SETUP_PASSWORD) {
-      socket.destroy();
-      return;
-    }
-    const header = req.headers.authorization || "";
-    const [scheme, encoded] = header.split(" ");
-    if (scheme !== "Basic" || !encoded) {
-      socket.destroy();
-      return;
-    }
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const idx = decoded.indexOf(":");
-    const password = idx >= 0 ? decoded.slice(idx + 1) : "";
-    if (!secureCompare(password, SETUP_PASSWORD)) {
+    if (!verifySocketAuth(req.headers.authorization, SETUP_PASSWORD, gatewayToken)) {
       socket.destroy();
       return;
     }

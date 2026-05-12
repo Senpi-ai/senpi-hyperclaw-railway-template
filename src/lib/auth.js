@@ -134,11 +134,41 @@ export function createRequireSetupAuth(setupPassword) {
 }
 
 /**
- * Check proxy/Control UI auth (Basic with setupPassword). Sends 401/500 and returns false if not authenticated.
+ * Verify an Authorization header matches either Basic <setupPassword> or
+ * Bearer <gatewayToken>. Both are accepted because the wrapper itself hands
+ * the gateway token to the browser (see AUTO_TOKEN_SCRIPT in routes/proxy.js)
+ * — Control UI fetches and the service worker then send it back as Bearer,
+ * and the wrapper has to recognize its own token.
+ *
+ * @param {string} header - raw Authorization header value (may be "")
+ * @param {string} setupPassword
+ * @param {string} gatewayToken
+ * @returns {boolean}
+ */
+function verifyProxyAuthHeader(header, setupPassword, gatewayToken) {
+  const [scheme, encoded] = (header || "").split(" ");
+  if (!scheme || !encoded) return false;
+  if (scheme === "Basic") {
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const idx = decoded.indexOf(":");
+    const password = idx >= 0 ? decoded.slice(idx + 1) : "";
+    return secureCompare(password, setupPassword);
+  }
+  if (scheme === "Bearer") {
+    if (!gatewayToken) return false;
+    return secureCompare(encoded, gatewayToken);
+  }
+  return false;
+}
+
+/**
+ * Check proxy/Control UI auth: accept Basic <SETUP_PASSWORD> or
+ * Bearer <OPENCLAW_GATEWAY_TOKEN>. Sends 401/500 and returns false if not authenticated.
  * @param {string} [setupPassword]
+ * @param {string} [gatewayToken]
  * @returns {(req: import("express").Request, res: import("express").Response) => boolean}
  */
-export function createCheckProxyAuth(setupPassword) {
+export function createCheckProxyAuth(setupPassword, gatewayToken = "") {
   return (req, res) => {
     if (!setupPassword) {
       res
@@ -149,21 +179,25 @@ export function createCheckProxyAuth(setupPassword) {
         );
       return false;
     }
-    const header = req.headers.authorization || "";
-    const [scheme, encoded] = header.split(" ");
-    if (scheme !== "Basic" || !encoded) {
-      res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
-      res.status(401).send("Auth required");
-      return false;
+    if (verifyProxyAuthHeader(req.headers.authorization, setupPassword, gatewayToken)) {
+      return true;
     }
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const idx = decoded.indexOf(":");
-    const password = idx >= 0 ? decoded.slice(idx + 1) : "";
-    if (!secureCompare(password, setupPassword)) {
-      res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
-      res.status(401).send("Invalid password");
-      return false;
-    }
-    return true;
+    res.set("WWW-Authenticate", 'Basic realm="Openclaw"');
+    res.status(401).send("Auth required");
+    return false;
   };
+}
+
+/**
+ * Same auth predicate as createCheckProxyAuth but for raw socket flows (WS upgrade)
+ * where we can't send a 401 response — caller is expected to destroy() the socket
+ * on false.
+ * @param {string|undefined} header
+ * @param {string} setupPassword
+ * @param {string} gatewayToken
+ * @returns {boolean}
+ */
+export function verifySocketAuth(header, setupPassword, gatewayToken) {
+  if (!setupPassword) return false;
+  return verifyProxyAuthHeader(header, setupPassword, gatewayToken);
 }
