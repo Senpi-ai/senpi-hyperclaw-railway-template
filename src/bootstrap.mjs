@@ -241,9 +241,9 @@ function patchOpenClawJson() {
           if (process.env.DISABLE_AUTO_UPDATE === "true") {
             runtimeConfig.autoUpdate = { enabled: false };
             console.log("[bootstrap] DISABLE_AUTO_UPDATE=true → autoUpdate.enabled set to false");
-          } else {
-            console.log(`[bootstrap] DISABLE_AUTO_UPDATE=${JSON.stringify(process.env.DISABLE_AUTO_UPDATE)} → autoUpdate left at default (enabled)`);
           }
+          // When not "true": don't set autoUpdate here. Any stale value from a prior boot is
+          // cleared post-merge below — see "stale autoUpdate" cleanup before fs.writeFileSync.
           entries[SENPI_RUNTIME_PLUGIN_ID] = {
             enabled: true,
             config: runtimeConfig,
@@ -339,6 +339,21 @@ function patchOpenClawJson() {
   if (merged.tools && typeof merged.tools === "object") {
     delete merged.tools.fs;
   }
+
+  // Clear stale autoUpdate when DISABLE_AUTO_UPDATE is not "true". deepMerge preserves
+  // target keys absent from the patch, so a previously-persisted autoUpdate.enabled=false
+  // would otherwise survive after the env var is removed — silently keeping auto-update off.
+  if (
+    process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false" &&
+    process.env.DISABLE_AUTO_UPDATE !== "true"
+  ) {
+    const runtimeCfg = merged.plugins?.entries?.[SENPI_RUNTIME_PLUGIN_ID]?.config;
+    if (runtimeCfg && "autoUpdate" in runtimeCfg) {
+      delete runtimeCfg.autoUpdate;
+      console.log("[bootstrap] DISABLE_AUTO_UPDATE not set → cleared stale autoUpdate from openclaw.json");
+    }
+  }
+
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
     const writtenAutoUpdate = merged.plugins?.entries?.runtime?.config?.autoUpdate;
