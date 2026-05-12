@@ -20,6 +20,7 @@ const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD);
 // for these public assets get 401 + WWW-Authenticate, which makes the browser
 // re-prompt the auth dialog. Bypass auth for GETs of these specific paths; the
 // gateway Bearer token is still injected by the proxyReq handler below.
+// Newer OpenClaw builds also serve the same files under the /__openclaw/ prefix.
 const PUBLIC_ASSET_PATHS = new Set([
   "/manifest.webmanifest",
   "/favicon.svg",
@@ -28,7 +29,10 @@ const PUBLIC_ASSET_PATHS = new Set([
 ]);
 
 function isPublicAssetRequest(req) {
-  return req.method === "GET" && PUBLIC_ASSET_PATHS.has(req.path);
+  if (req.method !== "GET") return false;
+  if (PUBLIC_ASSET_PATHS.has(req.path)) return true;
+  const stripped = req.path.replace(/^\/__openclaw/, "");
+  return stripped !== req.path && PUBLIC_ASSET_PATHS.has(stripped);
 }
 
 function debug(...args) {
