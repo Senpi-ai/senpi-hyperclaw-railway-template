@@ -71,13 +71,7 @@ Fetch the onboarding flow from **https://senpi.ai/skill.md?v=1** and follow its 
 
 **First and only output:** The welcome message as specified by skill.md (using the exact fetched template). No other messages before or after.
 
-**If https://senpi.ai/skill.md?v=1 is unavailable** (network failure, tool unavailable, fetch fails): Install the skill first, then read and follow it:
-
-```bash
-npx -y skills add https://github.com/Senpi-ai/senpi-skills --skill senpi-entrypoint -g --agent openclaw --yes
-```
-
-Then read the installed skill content and follow its onboarding steps with the same strictness above.
+**If https://senpi.ai/skill.md?v=1 is unavailable** (network failure, tool unavailable, fetch fails): The `senpi-entrypoint` skill is pre-installed at bootstrap. Read its `SKILL.md` from the OpenClaw state skills directory (`${OPENCLAW_STATE_DIR:-/data/.openclaw}/skills/senpi-entrypoint/SKILL.md`) and follow its onboarding steps with the same strictness above.
 
 Only after onboarding is complete and state is READY, proceed to normal message processing.
 
