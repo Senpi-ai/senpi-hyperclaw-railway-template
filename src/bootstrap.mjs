@@ -27,10 +27,11 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 /**
  * OpenClaw discovery uses the unscoped npm name as idHint (@senpi-ai/runtime → "runtime").
  * openclaw.plugin.json "id" must match that hint or you get "plugin id mismatch" warnings.
- * npm install spec stays scoped.
+ * npm install spec stays scoped (override with SENPI_RUNTIME_NPM_SPEC).
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC =
+  process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -38,7 +39,8 @@ const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
  */
 const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
 const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
-const SENPI_SKILLS_BRANCH = "main";
+const SENPI_SKILLS_BRANCH =
+  process.env.SENPI_SKILLS_BRANCH?.trim() || "main";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -232,12 +234,19 @@ function patchOpenClawJson() {
         // Only add Senpi runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false when plugin is not installed)
         if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
           entries["llm-task"] = { enabled: true };
+          const runtimeConfig = {
+            stateDir: path.join(STATE_DIR, "senpi-state"),
+            apiKey: resolveSenpiToken() || undefined,
+          };
+          if (process.env.DISABLE_AUTO_UPDATE === "true") {
+            runtimeConfig.autoUpdate = { enabled: false };
+            console.log("[bootstrap] DISABLE_AUTO_UPDATE=true → autoUpdate.enabled set to false");
+          } else {
+            console.log(`[bootstrap] DISABLE_AUTO_UPDATE=${JSON.stringify(process.env.DISABLE_AUTO_UPDATE)} → autoUpdate left at default (enabled)`);
+          }
           entries[SENPI_RUNTIME_PLUGIN_ID] = {
             enabled: true,
-            config: {
-              stateDir: path.join(STATE_DIR, "senpi-state"),
-              apiKey: resolveSenpiToken() || undefined,
-            },
+            config: runtimeConfig,
           };
         }
         return entries;
@@ -332,10 +341,11 @@ function patchOpenClawJson() {
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    const writtenAutoUpdate = merged.plugins?.entries?.runtime?.config?.autoUpdate;
     console.log(
       "[bootstrap] Senpi runtime plugin configured (stateDir:",
       path.join(STATE_DIR, "senpi-state"),
-      ")",
+      ") autoUpdate:", JSON.stringify(writtenAutoUpdate),
     );
   }
 }
@@ -468,30 +478,47 @@ function installSenpiRuntimePluginIfNeeded() {
   // `openclaw plugins update runtime` fails with "No install record for runtime"
   // and `openclaw plugins install` refuses with "plugin already exists".
   // Write the minimal record (source + spec + installPath) that update requires.
+  //
+  // Only backfill when the directory looks like a complete install — package.json
+  // and openclaw.plugin.json both parse, and node_modules exists. A partial install
+  // (npm fetched the tarball but build/postinstall died) would otherwise get cemented
+  // as "installed" and block any retry on redeploy.
   if (exists(pluginDir)) {
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-    if (!cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
-      let version;
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
-        version = pkg.version;
-      } catch { /* best-effort */ }
-      cfg.plugins = cfg.plugins || {};
-      cfg.plugins.installs = cfg.plugins.installs || {};
-      cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
-        source: "npm",
-        spec: SENPI_RUNTIME_NPM_SPEC,
-        installPath: pluginDir,
-        ...(version ? { version } : {}),
-        installedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-      console.log(
-        `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
-        (version ? ` (v${version})` : "")
+    let pkgVersion;
+    let installComplete = false;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
+      pkgVersion = pkg.version;
+      JSON.parse(fs.readFileSync(path.join(pluginDir, "openclaw.plugin.json"), "utf8"));
+      installComplete = exists(path.join(pluginDir, "node_modules"));
+    } catch { /* installComplete stays false */ }
+
+    if (!installComplete) {
+      console.warn(
+        `[bootstrap] ${pluginDir} exists but looks incomplete (missing package.json, openclaw.plugin.json, or node_modules) — removing and retrying install`
       );
+      fs.rmSync(pluginDir, { recursive: true, force: true });
+      // fall through to reinstall below
+    } else {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+      if (!cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
+        cfg.plugins = cfg.plugins || {};
+        cfg.plugins.installs = cfg.plugins.installs || {};
+        cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
+          source: "npm",
+          spec: SENPI_RUNTIME_NPM_SPEC,
+          installPath: pluginDir,
+          ...(pkgVersion ? { version: pkgVersion } : {}),
+          installedAt: new Date().toISOString(),
+        };
+        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+        console.log(
+          `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
+          (pkgVersion ? ` (v${pkgVersion})` : "")
+        );
+      }
+      return;
     }
-    return;
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
