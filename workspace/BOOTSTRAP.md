@@ -62,7 +62,7 @@ Then respond with: `NO_REPLY`
 
 Run the onboarding flow automatically. Do not ask for permission. Do not narrate steps.
 
-Fetch the onboarding flow from **https://senpi.ai/skill.md?v=1** and follow its steps exactly.
+Read the onboarding flow from the pre-installed `senpi-entrypoint` skill at `${OPENCLAW_STATE_DIR:-/data/.openclaw}/skills/senpi-entrypoint/SKILL.md` and follow its steps exactly.
 
 **Critical — follow skill.md precisely:**
 - Follow every step in the order skill.md specifies. Do not skip, reorder, or summarize steps.
@@ -71,7 +71,7 @@ Fetch the onboarding flow from **https://senpi.ai/skill.md?v=1** and follow its 
 
 **First and only output:** The welcome message as specified by skill.md (using the exact fetched template). No other messages before or after.
 
-**If https://senpi.ai/skill.md?v=1 is unavailable** (network failure, tool unavailable, fetch fails): The `senpi-entrypoint` skill is pre-installed at bootstrap. Read its `SKILL.md` from the OpenClaw state skills directory (`${OPENCLAW_STATE_DIR:-/data/.openclaw}/skills/senpi-entrypoint/SKILL.md`) and follow its onboarding steps with the same strictness above.
+**If the local skill is unavailable** (file missing, read fails): Fetch the onboarding flow from **https://senpi.ai/skill.md?v=1** and follow it with the same strictness above.
 
 Only after onboarding is complete and state is READY, proceed to normal message processing.
 
