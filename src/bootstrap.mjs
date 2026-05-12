@@ -38,7 +38,7 @@ const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
  */
 const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
 const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
-const SENPI_SKILLS_BRANCH = "main";
+const SENPI_SKILLS_BRANCH = "merge/senpi-helpers-into-runtime";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
