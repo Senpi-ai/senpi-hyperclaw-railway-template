@@ -52,13 +52,17 @@ process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 
 const app = express();
 app.disable("x-powered-by");
-app.use(express.json({ limit: "1mb" }));
+
+// Only parse JSON for routes that need it (setup, internal APIs).
+// Do NOT apply globally — it consumes the body stream, breaking http-proxy
+// for POST/PUT requests forwarded to the gateway.
+const jsonParser = express.json({ limit: "1mb" });
 
 // Setup wizard and API
-app.use("/setup", createSetupRouter());
+app.use("/setup", jsonParser, createSetupRouter());
 
 // Internal sessions API (loopback to gateway, no device auth needed)
-app.use("/internal/sessions", createSessionsRouter());
+app.use("/internal/sessions", jsonParser, createSessionsRouter());
 
 // Control UI (/, /openclaw) — intercept HTML and inject token script
 app.get(
