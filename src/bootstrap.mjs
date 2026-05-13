@@ -476,50 +476,53 @@ function installSenpiRuntimePluginIfNeeded() {
   // NOT the full scoped package path.  @senpi-ai/runtime → extensions/runtime.
   const pluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
 
-  // Backfill: if the plugin directory exists but the install record is missing,
-  // `openclaw plugins update runtime` fails with "No install record for runtime"
-  // and `openclaw plugins install` refuses with "plugin already exists".
-  // Write the minimal record (source + spec + installPath) that update requires.
+  // An install is "complete" only when both sides agree:
+  //   1. Filesystem: package.json + openclaw.plugin.json parse, node_modules exists.
+  //   2. Config record: plugins.installs.runtime carries integrity + shasum (the
+  //      sha512/sha1 hashes npm computes from the tarball at install time).
+  // Integrity/shasum cannot be reconstructed after the fact — the tarball is gone
+  // once the plugin is extracted — so any record missing them was never produced by
+  // a full `openclaw plugins install` and is permanently second-class.
   //
-  // Only backfill when the directory looks like a complete install — package.json
-  // and openclaw.plugin.json both parse, and node_modules exists. A partial install
-  // (npm fetched the tarball but build/postinstall died) would otherwise get cemented
-  // as "installed" and block any retry on redeploy.
-  if (exists(pluginDir)) {
-    let pkgVersion;
-    let installComplete = false;
-    try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
-      pkgVersion = pkg.version;
-      JSON.parse(fs.readFileSync(path.join(pluginDir, "openclaw.plugin.json"), "utf8"));
-      installComplete = exists(path.join(pluginDir, "node_modules"));
-    } catch { /* installComplete stays false */ }
+  // If either side is incomplete, wipe the dir, strip stale plugins.entries.runtime
+  // / plugins.allow / plugins.installs.runtime from openclaw.json (otherwise config
+  // validation fails with "plugin not found: runtime" and blocks the install), then
+  // let `openclaw plugins install` rebuild everything cleanly.
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  const installRecord = cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID];
+  const recordComplete = Boolean(installRecord?.integrity && installRecord?.shasum);
 
-    if (!installComplete) {
-      console.warn(
-        `[bootstrap] ${pluginDir} exists but looks incomplete (missing package.json, openclaw.plugin.json, or node_modules) — removing and retrying install`
-      );
+  let dirComplete = false;
+  if (exists(pluginDir)) {
+    try {
+      JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
+      JSON.parse(fs.readFileSync(path.join(pluginDir, "openclaw.plugin.json"), "utf8"));
+      dirComplete = exists(path.join(pluginDir, "node_modules"));
+    } catch { /* dirComplete stays false */ }
+  }
+
+  if (dirComplete && recordComplete) return;
+
+  const allowHasRuntime =
+    Array.isArray(cfg.plugins?.allow) && cfg.plugins.allow.includes(SENPI_RUNTIME_PLUGIN_ID);
+  if (exists(pluginDir) || installRecord || cfg.plugins?.entries?.[SENPI_RUNTIME_PLUGIN_ID] || allowHasRuntime) {
+    console.warn(
+      `[bootstrap] ${SENPI_RUNTIME_PLUGIN_ID} install is incomplete ` +
+      `(dirComplete=${dirComplete}, recordComplete=${recordComplete}) — ` +
+      `cleaning ${pluginDir} and stale openclaw.json refs before reinstall`
+    );
+
+    if (exists(pluginDir)) {
       fs.rmSync(pluginDir, { recursive: true, force: true });
-      // fall through to reinstall below
-    } else {
-      const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-      if (!cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
-        cfg.plugins = cfg.plugins || {};
-        cfg.plugins.installs = cfg.plugins.installs || {};
-        cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
-          source: "npm",
-          spec: SENPI_RUNTIME_NPM_SPEC,
-          installPath: pluginDir,
-          ...(pkgVersion ? { version: pkgVersion } : {}),
-          installedAt: new Date().toISOString(),
-        };
-        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-        console.log(
-          `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
-          (pkgVersion ? ` (v${pkgVersion})` : "")
-        );
+    }
+
+    if (cfg.plugins) {
+      if (cfg.plugins.entries) delete cfg.plugins.entries[SENPI_RUNTIME_PLUGIN_ID];
+      if (Array.isArray(cfg.plugins.allow)) {
+        cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== SENPI_RUNTIME_PLUGIN_ID);
       }
-      return;
+      if (cfg.plugins.installs) delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
     }
   }
 
