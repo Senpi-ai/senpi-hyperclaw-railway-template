@@ -27,10 +27,11 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 /**
  * OpenClaw discovery uses the unscoped npm name as idHint (@senpi-ai/runtime → "runtime").
  * openclaw.plugin.json "id" must match that hint or you get "plugin id mismatch" warnings.
- * npm install spec stays scoped.
+ * npm install spec stays scoped (override with SENPI_RUNTIME_NPM_SPEC).
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC =
+  process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -38,7 +39,8 @@ const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
  */
 const SENPI_TRADING_RUNTIME_SKILL_NAME = "senpi-trading-runtime";
 const SENPI_SKILLS_REPO = "https://github.com/Senpi-ai/senpi-skills";
-const SENPI_SKILLS_BRANCH = "main";
+const SENPI_SKILLS_BRANCH =
+  process.env.SENPI_SKILLS_BRANCH?.trim() || "main";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -232,12 +234,21 @@ function patchOpenClawJson() {
         // Only add Senpi runtime if enabled (set SENPI_TRADING_RUNTIME_ENABLED=false when plugin is not installed)
         if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
           entries["llm-task"] = { enabled: true };
+          const runtimeConfig = {
+            stateDir: path.join(STATE_DIR, "senpi-state"),
+            apiKey: resolveSenpiToken() || undefined,
+          };
+          // Always write autoUpdate.enabled explicitly so removing DISABLE_AUTO_UPDATE
+          // re-enables auto-update on the next boot. Default is true; set the env var
+          // to "true" to disable.
+          const autoUpdateEnabled = process.env.DISABLE_AUTO_UPDATE !== "true";
+          runtimeConfig.autoUpdate = { enabled: autoUpdateEnabled };
+          console.log(
+            `[bootstrap] DISABLE_AUTO_UPDATE=${JSON.stringify(process.env.DISABLE_AUTO_UPDATE)} → autoUpdate.enabled=${autoUpdateEnabled}`
+          );
           entries[SENPI_RUNTIME_PLUGIN_ID] = {
             enabled: true,
-            config: {
-              stateDir: path.join(STATE_DIR, "senpi-state"),
-              apiKey: resolveSenpiToken() || undefined,
-            },
+            config: runtimeConfig,
           };
         }
         return entries;
@@ -332,10 +343,11 @@ function patchOpenClawJson() {
   }
   fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2));
   if (process.env.SENPI_TRADING_RUNTIME_ENABLED !== "false") {
+    const writtenAutoUpdate = merged.plugins?.entries?.runtime?.config?.autoUpdate;
     console.log(
       "[bootstrap] Senpi runtime plugin configured (stateDir:",
       path.join(STATE_DIR, "senpi-state"),
-      ")",
+      ") autoUpdate:", JSON.stringify(writtenAutoUpdate),
     );
   }
 }
@@ -464,34 +476,54 @@ function installSenpiRuntimePluginIfNeeded() {
   // NOT the full scoped package path.  @senpi-ai/runtime → extensions/runtime.
   const pluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
 
-  // Backfill: if the plugin directory exists but the install record is missing,
-  // `openclaw plugins update runtime` fails with "No install record for runtime"
-  // and `openclaw plugins install` refuses with "plugin already exists".
-  // Write the minimal record (source + spec + installPath) that update requires.
+  // An install is "complete" only when both sides agree:
+  //   1. Filesystem: package.json + openclaw.plugin.json parse, node_modules exists.
+  //   2. Config record: plugins.installs.runtime carries integrity + shasum (the
+  //      sha512/sha1 hashes npm computes from the tarball at install time).
+  // Integrity/shasum cannot be reconstructed after the fact — the tarball is gone
+  // once the plugin is extracted — so any record missing them was never produced by
+  // a full `openclaw plugins install` and is permanently second-class.
+  //
+  // If either side is incomplete, wipe the dir, strip stale plugins.entries.runtime
+  // / plugins.allow / plugins.installs.runtime from openclaw.json (otherwise config
+  // validation fails with "plugin not found: runtime" and blocks the install), then
+  // let `openclaw plugins install` rebuild everything cleanly.
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  const installRecord = cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID];
+  const recordComplete = Boolean(installRecord?.integrity && installRecord?.shasum);
+
+  let dirComplete = false;
   if (exists(pluginDir)) {
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-    if (!cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
-      let version;
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
-        version = pkg.version;
-      } catch { /* best-effort */ }
-      cfg.plugins = cfg.plugins || {};
-      cfg.plugins.installs = cfg.plugins.installs || {};
-      cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
-        source: "npm",
-        spec: SENPI_RUNTIME_NPM_SPEC,
-        installPath: pluginDir,
-        ...(version ? { version } : {}),
-        installedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-      console.log(
-        `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
-        (version ? ` (v${version})` : "")
-      );
+    try {
+      JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
+      JSON.parse(fs.readFileSync(path.join(pluginDir, "openclaw.plugin.json"), "utf8"));
+      dirComplete = exists(path.join(pluginDir, "node_modules"));
+    } catch { /* dirComplete stays false */ }
+  }
+
+  if (dirComplete && recordComplete) return;
+
+  const allowHasRuntime =
+    Array.isArray(cfg.plugins?.allow) && cfg.plugins.allow.includes(SENPI_RUNTIME_PLUGIN_ID);
+  if (exists(pluginDir) || installRecord || cfg.plugins?.entries?.[SENPI_RUNTIME_PLUGIN_ID] || allowHasRuntime) {
+    console.warn(
+      `[bootstrap] ${SENPI_RUNTIME_PLUGIN_ID} install is incomplete ` +
+      `(dirComplete=${dirComplete}, recordComplete=${recordComplete}) — ` +
+      `cleaning ${pluginDir} and stale openclaw.json refs before reinstall`
+    );
+
+    if (exists(pluginDir)) {
+      fs.rmSync(pluginDir, { recursive: true, force: true });
     }
-    return;
+
+    if (cfg.plugins) {
+      if (cfg.plugins.entries) delete cfg.plugins.entries[SENPI_RUNTIME_PLUGIN_ID];
+      if (Array.isArray(cfg.plugins.allow)) {
+        cfg.plugins.allow = cfg.plugins.allow.filter((id) => id !== SENPI_RUNTIME_PLUGIN_ID);
+      }
+      if (cfg.plugins.installs) delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    }
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
@@ -532,17 +564,34 @@ function installSenpiTradingRuntimeSkillIfNeeded() {
   if (!exists(cfgPath)) return;
 
   const sentinelPath = path.join(STATE_DIR, "config", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-skill.installed`);
+  const tmpDir = path.join(STATE_DIR, "tmp", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-clone`);
+  const skillDestDir = path.join(STATE_SKILLS_DIR, SENPI_TRADING_RUNTIME_SKILL_NAME);
+
+  // Sentinel encodes the branch that was installed, so changing SENPI_SKILLS_BRANCH
+  // between deploys triggers a reinstall instead of silently keeping the old branch.
+  // Legacy sentinels (just an ISO timestamp) match no branch → also trigger reinstall.
   if (exists(sentinelPath)) {
-    console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill already installed, skipping`);
-    return;
+    let installedBranch = "";
+    try {
+      const match = fs.readFileSync(sentinelPath, "utf8").match(/^branch:(.+)$/m);
+      installedBranch = match ? match[1].trim() : "";
+    } catch { /* fall through: reinstall */ }
+
+    if (installedBranch === SENPI_SKILLS_BRANCH) {
+      console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill already installed (branch: ${SENPI_SKILLS_BRANCH}), skipping`);
+      return;
+    }
+    console.log(
+      `[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill branch changed (was: ${installedBranch || "unknown"}, now: ${SENPI_SKILLS_BRANCH}) — reinstalling`
+    );
+    // Wipe the old skill dir so files removed in the new branch don't linger (cpSync merges, doesn't replace).
+    if (exists(skillDestDir)) fs.rmSync(skillDestDir, { recursive: true, force: true });
   }
 
   // Clone the skill directory directly from the repo rather than using the `skills` CLI.
   // The `skills` CLI mis-parses branch names containing "/" (e.g. "SAITA/dsl") and leaks
   // the branch suffix into the skill-name filter, causing "No matching skills found".
   // Cloning the full repo at the target branch and copying the skill subdir is reliable.
-  const tmpDir = path.join(STATE_DIR, "tmp", `${SENPI_TRADING_RUNTIME_SKILL_NAME}-clone`);
-  const skillDestDir = path.join(STATE_SKILLS_DIR, SENPI_TRADING_RUNTIME_SKILL_NAME);
 
   // Clean up any previous failed clone attempt.
   if (exists(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -574,9 +623,10 @@ function installSenpiTradingRuntimeSkillIfNeeded() {
   fs.cpSync(skillSrcDir, skillDestDir, { recursive: true });
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
-  // Write sentinel so future boots skip the install.
+  // Write sentinel so future boots skip the install. Branch is embedded so a different
+  // SENPI_SKILLS_BRANCH on the next boot triggers a reinstall (see check above).
   ensureDir(path.dirname(sentinelPath));
-  fs.writeFileSync(sentinelPath, new Date().toISOString());
+  fs.writeFileSync(sentinelPath, `branch:${SENPI_SKILLS_BRANCH}\ninstalledAt:${new Date().toISOString()}\n`);
   console.log(`[bootstrap] ${SENPI_TRADING_RUNTIME_SKILL_NAME} skill installed (branch: ${SENPI_SKILLS_BRANCH})`);
 }
 
