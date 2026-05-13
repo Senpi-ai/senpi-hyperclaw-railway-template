@@ -117,15 +117,23 @@ async function readTranscript(filePath) {
     if (!line.trim()) continue;
     try {
       const entry = JSON.parse(line);
-      if (entry.role && entry.content !== undefined) {
-        messages.push({
-          role: entry.role,
-          content: typeof entry.content === "string"
-            ? entry.content
-            : JSON.stringify(entry.content),
-          timestamp: entry.timestamp || entry.ts || entry.createdAt || null,
-        });
-      }
+      if (entry.type !== "message" || !entry.message) continue;
+
+      const msg = entry.message;
+      const content = Array.isArray(msg.content)
+        ? msg.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("\n")
+        : typeof msg.content === "string"
+          ? msg.content
+          : JSON.stringify(msg.content);
+
+      messages.push({
+        role: msg.role,
+        content,
+        timestamp: entry.timestamp || null,
+      });
     } catch {
       // skip malformed lines
     }
