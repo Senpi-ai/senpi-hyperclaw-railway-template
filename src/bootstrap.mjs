@@ -236,8 +236,13 @@ function patchOpenClawJson() {
           entries["llm-task"] = { enabled: true };
           const runtimeConfig = {
             stateDir: path.join(STATE_DIR, "senpi-state"),
-            apiKey: resolveSenpiToken() || undefined,
           };
+          // Only set apiKey when we actually resolved a token. Writing `apiKey: undefined`
+          // would deepMerge into the existing entry and JSON.stringify would then drop it,
+          // silently wiping an apiKey persisted from a previous boot whenever the env var
+          // is unset.
+          const resolvedApiKey = resolveSenpiToken();
+          if (resolvedApiKey) runtimeConfig.apiKey = resolvedApiKey;
           // Always write autoUpdate.enabled explicitly so removing DISABLE_AUTO_UPDATE
           // re-enables auto-update on the next boot. Default is true; set the env var
           // to "true" to disable.
@@ -505,6 +510,19 @@ function installSenpiRuntimePluginIfNeeded() {
 
   const allowHasRuntime =
     Array.isArray(cfg.plugins?.allow) && cfg.plugins.allow.includes(SENPI_RUNTIME_PLUGIN_ID);
+
+  // Snapshot the existing entry's config (stateDir, apiKey, autoUpdate, …) so we can
+  // restore it after `openclaw plugins install` rewrites the entry as bare
+  // `{ enabled: true }`. Without this, an apiKey persisted only in openclaw.json
+  // (no env var, no senpi.token file) would be lost on every reinstall — and
+  // even stateDir/autoUpdate would disappear if anything between the wipe and
+  // patchOpenClawJson throws (bootstrap is wrapped in try/catch at the caller).
+  const savedRuntimeConfig =
+    cfg.plugins?.entries?.[SENPI_RUNTIME_PLUGIN_ID]?.config &&
+    typeof cfg.plugins.entries[SENPI_RUNTIME_PLUGIN_ID].config === "object"
+      ? structuredClone(cfg.plugins.entries[SENPI_RUNTIME_PLUGIN_ID].config)
+      : null;
+
   if (exists(pluginDir) || installRecord || cfg.plugins?.entries?.[SENPI_RUNTIME_PLUGIN_ID] || allowHasRuntime) {
     console.warn(
       `[bootstrap] ${SENPI_RUNTIME_PLUGIN_ID} install is incomplete ` +
@@ -541,9 +559,32 @@ function installSenpiRuntimePluginIfNeeded() {
       `[bootstrap] openclaw plugins install ${SENPI_RUNTIME_NPM_SPEC} failed:`,
       result.stderr || result.stdout
     );
-    return;
+  } else {
+    console.log(`[bootstrap] ${SENPI_RUNTIME_NPM_SPEC} installed via openclaw plugins install`);
   }
-  console.log(`[bootstrap] ${SENPI_RUNTIME_NPM_SPEC} installed via openclaw plugins install`);
+
+  // Restore the saved config onto plugins.entries.runtime so the post-install
+  // openclaw.json carries stateDir/apiKey/autoUpdate even before patchOpenClawJson
+  // runs. patchOpenClawJson will still overwrite stateDir/autoUpdate and (when a
+  // token source is present) apiKey with the current values from env, but if it
+  // never runs — e.g. installSenpiTradingRuntimeSkillIfNeeded throws — the entry
+  // still has the previously-persisted values instead of being config-less.
+  if (savedRuntimeConfig) {
+    try {
+      const after = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+      after.plugins = after.plugins || {};
+      after.plugins.entries = after.plugins.entries || {};
+      const entry = after.plugins.entries[SENPI_RUNTIME_PLUGIN_ID] || { enabled: true };
+      entry.config = { ...savedRuntimeConfig, ...(entry.config || {}) };
+      after.plugins.entries[SENPI_RUNTIME_PLUGIN_ID] = entry;
+      fs.writeFileSync(cfgPath, JSON.stringify(after, null, 2));
+      console.log(
+        `[bootstrap] restored plugins.entries.${SENPI_RUNTIME_PLUGIN_ID}.config from pre-reinstall snapshot`
+      );
+    } catch (err) {
+      console.error(`[bootstrap] failed to restore runtime config after reinstall: ${err}`);
+    }
+  }
 }
 
 /**
