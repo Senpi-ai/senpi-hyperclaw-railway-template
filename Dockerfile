@@ -71,16 +71,8 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile && pnpm store prune
 
-# Install MCPorter CLI so the mcporter skill can execute it (pinned for reproducible builds)
-RUN npm install -g mcporter@0.7.3 mcp-remote@0.1.38
-
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
-
-
-# Vendor mcporter skill from the same OpenClaw ref used in build stage (no extra git clone)
-RUN mkdir -p /opt/openclaw-skills
-COPY --from=openclaw-build /openclaw/skills/mcporter /opt/openclaw-skills/mcporter
 
 # Provide a openclaw executable
 RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"' > /usr/local/bin/openclaw \
@@ -108,7 +100,6 @@ COPY workspace/TOOLS.md /opt/workspace-defaults/TOOLS.md
 COPY src ./src
 
 ENV PORT=8080
-ENV MCPORTER_CONFIG="/data/.openclaw/config/mcporter.json"
 EXPOSE 8080
 
 CMD ["node", "src/server.js"]
