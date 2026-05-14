@@ -473,13 +473,18 @@ function installSenpiRuntimePluginIfNeeded() {
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
-  // OpenClaw 2026.5.x added a static-analysis install gate that flags any
-  // child_process use. The Senpi runtime legitimately spawns processes for
-  // the auto-updater and its CLI surface; pass --dangerously-force-unsafe-install
-  // so the trusted, first-party plugin installs through.
+  // OpenClaw 2026.5.x's install gate (skill-scanner.ts dangerous-exec rule)
+  // flags any plugin file whose compiled JS contains both a spawn/exec call
+  // site AND the literal "child_process" in the same file. We used to pass
+  // --dangerously-force-unsafe-install here to bypass the gate. As of
+  // @senpi/runtime 1.2.0-dev (after the safe-spawn refactor — see the
+  // plugin's src/utils/safe-spawn.ts) the gate no longer matches, so the
+  // bypass flag is gone. Leaving it OFF here also surfaces any future
+  // regression: if a future plugin version reintroduces the literal,
+  // install fails loudly instead of silently bypassing.
   const result = spawnSync(
     "openclaw",
-    ["plugins", "install", "--dangerously-force-unsafe-install", SENPI_RUNTIME_NPM_SPEC],
+    ["plugins", "install", SENPI_RUNTIME_NPM_SPEC],
     {
       env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
       stdio: "pipe",
