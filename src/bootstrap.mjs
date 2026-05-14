@@ -23,7 +23,15 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
  * npm install spec stays scoped.
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+// `integration/openclaw-v2026.5.7-full` interim branch installs from the DEV
+// npm channel (`@senpi/runtime`) while we ship openclaw-2026.5.x compatibility
+// fixes that haven't reached the prod channel (`@senpi-ai/runtime`) yet. The
+// plugin's `resolvePackageName()` (see senpi-trading-runtime/runtime/auto-update/)
+// introspects this so auto-update follows the same npm channel — no flip-flop
+// with the prod line. Revert to `@senpi-ai/runtime` at cutover when the
+// upgrade work merges to wrapper main and the prod plugin ships the matching
+// patches (resolvePackageName + manifest commandAliases/activation).
+const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
