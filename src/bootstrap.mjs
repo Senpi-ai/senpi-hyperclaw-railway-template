@@ -31,7 +31,15 @@ const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 // with the prod line. Revert to `@senpi-ai/runtime` at cutover when the
 // upgrade work merges to wrapper main and the prod plugin ships the matching
 // patches (resolvePackageName + manifest commandAliases/activation).
-const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime";
+//
+// Two constants, because OpenClaw v2026.5.x refuses to install a prerelease
+// without an explicit dist-tag — versions on this dev channel carry a
+// `-dev.<branch>.<ts>` suffix, so we ask for `@senpi/runtime@beta` (the
+// dist-tag the openclaw-upgrade/main publish-dev job tags as). The package
+// still lands on disk under its npm name, so the path probe needs the bare
+// name (without `@beta`) to find the install directory.
+const SENPI_RUNTIME_NPM_NAME = "@senpi/runtime";
+const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime@beta";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -430,7 +438,7 @@ function installSenpiRuntimePluginIfNeeded() {
   //   - 2026.5.x (managed npm):  STATE_DIR/npm/node_modules/@senpi-ai/runtime
   //   - 2026.2.x (legacy extensions): STATE_DIR/extensions/runtime
   // The first one that exists tells us the plugin is already installed.
-  const managedPluginDir = path.join(STATE_DIR, "npm", "node_modules", SENPI_RUNTIME_NPM_SPEC);
+  const managedPluginDir = path.join(STATE_DIR, "npm", "node_modules", SENPI_RUNTIME_NPM_NAME);
   const legacyPluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
   const pluginDir = exists(managedPluginDir) ? managedPluginDir : legacyPluginDir;
 
