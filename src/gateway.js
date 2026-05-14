@@ -24,8 +24,6 @@ import {
   stopAutoApprovalLoop,
 } from "./lib/deviceAuth.js";
 
-const MCPORTER_CONFIG = path.join(STATE_DIR, "config", "mcporter.json");
-
 let gatewayProc = null;
 let gatewayStarting = null;
 
@@ -93,24 +91,6 @@ function clearAllSessions() {
     }
   } catch (err) {
     console.warn(`[gateway] clearAllSessions: ${err.message}`);
-  }
-}
-
-/** Fire-and-forget MCP connectivity check after gateway is ready. */
-async function checkMcpHealth() {
-  try {
-    const { code, output } = await runCmd("mcporter", [
-      "call", "senpi.user_get_me",
-      "--config", MCPORTER_CONFIG,
-      "--output", "json",
-    ]);
-    if (code === 0) {
-      console.log("[gateway] MCP health check: OK");
-    } else {
-      console.warn(`[gateway] MCP health check: FAIL (exit ${code}) ${output?.slice(0, 200) ?? ""}`);
-    }
-  } catch (err) {
-    console.warn(`[gateway] MCP health check: FAIL (${err.message})`);
   }
 }
 
@@ -321,7 +301,6 @@ export async function ensureGatewayRunning(gatewayToken) {
         throw new Error("Gateway did not become ready in time");
       }
       startAutoApprovalLoop();
-      checkMcpHealth();
     })().finally(() => {
       gatewayStarting = null;
     });
