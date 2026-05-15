@@ -33,7 +33,6 @@ export const DESIRED_MODELS = {
   "openai-codex/gpt-5.3-codex": { alias: "GPT-5.3 Codex" },
 
   // ── Google Gemini ──
-  "google/gemini-3.1-pro-preview": { alias: "Gemini 3.1 Pro" },
   "google/gemini-3-flash-preview": { alias: "Gemini 3 Flash" },
   "google/gemini-3.1-flash-lite-preview": { alias: "Gemini 3.1 Flash Lite" },
   "google/gemini-2.5-pro": { alias: "Gemini 2.5 Pro" },
@@ -159,7 +158,7 @@ export const DESIRED_MODELS = {
 export const PROVIDER_DEFAULTS = [
   { key: "ANTHROPIC_API_KEY", model: "anthropic/claude-opus-4-6" },
   { key: "OPENAI_API_KEY", model: "openai/gpt-5.2" },
-  { key: "GEMINI_API_KEY", model: "google/gemini-3.1-pro-preview" },
+  { key: "GEMINI_API_KEY", model: "google/gemini-2.5-pro" },
   { key: "XAI_API_KEY", model: "xai/grok-3" },
   { key: "MISTRAL_API_KEY", model: "mistral/mistral-large-latest" },
   { key: "GROQ_API_KEY", model: "groq/llama-3.3-70b" },
@@ -177,8 +176,8 @@ export const PROVIDER_DEFAULTS = [
 export const AI_PROVIDER_MODEL_MAP = {
   anthropic: "anthropic/claude-opus-4-6",
   openai: "openai/gpt-5.2",
-  gemini: "google/gemini-3.1-pro-preview",
-  google: "google/gemini-3.1-pro-preview",
+  gemini: "google/gemini-2.5-pro",
+  google: "google/gemini-2.5-pro",
   openrouter: "openrouter/anthropic/claude-sonnet-4-5",
   moonshot: "moonshot/kimi-k2.5",
   zai: "zai/glm-5",
