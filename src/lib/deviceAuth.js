@@ -54,7 +54,16 @@ export function extractPendingRequests(parsed) {
  *     `openclaw devices approve <requestId>`), AND
  *   - resolved role/roles include "operator" (we never auto-approve viewers
  *     or other roles), AND
- *   - remoteIp is loopback (127.0.0.1, ::1, ::ffff:127.0.0.1).
+ *   - one of:
+ *       (a) remoteIp is loopback (127.0.0.1, ::1, ::ffff:127.0.0.1) — older
+ *           OpenClaw builds populated this for loopback clients, OR
+ *       (b) remoteIp is absent/empty — v2026.5.x's DevicePairingPendingRequest
+ *           declares `remoteIp?: string` and the local CLI flow
+ *           (clientMode: "cli") doesn't populate it. We accept this as
+ *           safe because the gateway binds to loopback only (wrapper
+ *           enforces `--bind loopback` in src/gateway.js), so any pending
+ *           request — including a scope upgrade with `isRepair: true` —
+ *           must have originated from a same-container client.
  *
  * Field-name back-compat: `remoteIp` (v2026.5.x) → `remote` / `remoteAddr` /
  * `ip` (older builds).
@@ -62,8 +71,11 @@ export function extractPendingRequests(parsed) {
  * Note: NO status check here — every entry in the `pending` array is
  * by definition pending. Including "scope upgrade" and "re-approval" kinds.
  * That's what fixes the B1 bug: previously the wrapper filtered by
- * `status === "pending"` literally, which excluded the "scope upgrade" kind
- * entirely. Now we approve all pending kinds for loopback operators.
+ * `status === "pending"` literally AND required `remoteIp` to be a
+ * populated loopback string. v2026.5.x's CLI pairing flow trips on BOTH
+ * constraints. The fix is to drop the literal status check (move to
+ * "everything in `pending` is pending") AND to allow missing remoteIp
+ * (because the gateway's bind-loopback is the actual security boundary).
  *
  * @param {object} req
  * @returns {boolean}
@@ -79,6 +91,8 @@ export function isLoopbackOperatorRequest(req) {
     : [];
   if (role !== "operator" && !roles.includes("operator")) return false;
   const remote = req.remoteIp ?? req.remote ?? req.remoteAddr ?? req.ip;
+  // Empty / absent remote → trust the gateway's bind-loopback boundary.
+  if (remote === undefined || remote === null || remote === "") return true;
   if (typeof remote !== "string") return false;
   return (
     remote === "127.0.0.1" ||

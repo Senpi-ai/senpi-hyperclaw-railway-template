@@ -181,13 +181,32 @@ test("isLoopbackOperatorRequest: no role / no roles → false", () => {
   );
 });
 
-test("isLoopbackOperatorRequest: missing remoteIp → false", () => {
+test("isLoopbackOperatorRequest: missing remoteIp → true (v2026.5.x CLI requests omit it)", () => {
+  // v2026.5.x's DevicePairingPendingRequest type declares remoteIp as
+  // optional. The CLI flow (clientMode: "cli") doesn't populate it because
+  // there is no remote IP — the CLI talks to the gateway in the same
+  // container. Verified empirically on openclaw-drop-mcporter-test: a
+  // freshly-paired scope-upgrade request comes back with NO remoteIp field.
+  // Since the gateway only listens on loopback (wrapper enforces
+  // `--bind loopback`), any pending request is by definition local — auto-
+  // approving operator-role requests without a remoteIp is safe.
   assert.equal(
     isLoopbackOperatorRequest({
       requestId: "r1",
       role: "operator",
     }),
-    false,
+    true,
+  );
+});
+
+test("isLoopbackOperatorRequest: empty-string remoteIp → true (same rationale)", () => {
+  assert.equal(
+    isLoopbackOperatorRequest({
+      requestId: "r1",
+      role: "operator",
+      remoteIp: "",
+    }),
+    true,
   );
 });
 
