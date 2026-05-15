@@ -36,6 +36,10 @@ RUN set -eux; \
     sed -i -E 's/"openclaw"[[:space:]]*:[[:space:]]*"workspace:[^"]+"/"openclaw": "*"/g' "$f"; \
   done
 
+# Bypass openclaw's pnpm minimumReleaseAge (48h) so fresh @openclaw/* sub-package
+# publishes don't block builds with ERR_PNPM_NO_MATURE_MATCHING_VERSION.
+RUN sed -i -E 's/^minimumReleaseAge:.*/minimumReleaseAge: 0/' pnpm-workspace.yaml
+
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
