@@ -144,6 +144,9 @@ function patchOpenClawJson() {
         security: "full",
         ask: "off",
       },
+      sessions: {
+        visibility: "all",
+      },
     },
     gateway: {
       controlUi: {
