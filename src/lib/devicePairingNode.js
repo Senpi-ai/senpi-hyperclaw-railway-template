@@ -127,9 +127,36 @@ export async function approveDeviceLocally(requestId) {
 }
 
 /**
- * Reset the cached module promise — for unit tests only.
- * @internal
+ * List pending + paired devices via direct Node import — bypassing the gateway
+ * RPC and the CLI subprocess entirely.
+ *
+ * Why this exists, separate from the approve helper:
+ *
+ * On v2026.5.x, `openclaw devices list --json` itself triggers a scope-upgrade
+ * because `device.pair.list` is a pairing method (least-privilege scope =
+ * `operator.pairing`) and the wrapper's auto-paired CLI device only holds
+ * `operator.read`. The CLI command, when run via the wrapper's `runCmd()`
+ * (which merges stdout+stderr), prints to stderr:
+ *
+ *   gateway connect failed: GatewayClientRequestError: scope upgrade pending approval (requestId: ...)
+ *
+ * and to stdout the local-fallback JSON. The wrapper's `JSON.parse(out)`
+ * sees the error line first and silently fails to the catch block,
+ * returning 0 pending — so the auto-approve loop NEVER sees the pending
+ * scope-upgrade requests it should be approving. The cycle never starts.
+ *
+ * Reading paired+pending directly from `~/.openclaw/devices/` avoids all of
+ * this. Same local-trust rationale as `approveDeviceLocally` — anyone with
+ * filesystem access to the openclaw state dir already has admin-equivalent
+ * capability, and the wrapper has that access by design.
+ *
+ * Returns the openclaw `DevicePairingList` shape: `{ pending: [...], paired: [...] }`.
+ * Throws when the openclaw bundle can't be loaded (callers should fall back
+ * to the CLI subprocess).
+ *
+ * @returns {Promise<{pending: object[], paired: object[]}>}
  */
-export function __resetLoadCacheForTesting() {
-  _modulePromise = null;
+export async function listDevicePairingLocally() {
+  const mod = await loadDeviceBootstrap();
+  return await mod.listDevicePairing();
 }

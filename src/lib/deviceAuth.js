@@ -3,7 +3,7 @@
  * Continuously auto-approve loopback operator devices so internal clients
  * (cron, sessions, tools, Control UI) never get stuck on "pairing required".
  *
- * v2026.5.x compatibility: TWO bugs needed fixing on the upgrade.
+ * v2026.5.x compatibility: THREE bugs needed fixing on the upgrade.
  *
  * (1) `openclaw devices list --json` shape changed from a flat array to
  *     `{ pending: [...], paired: [...] }`. The old `JSON.parse(...).filter(...)`
@@ -29,12 +29,29 @@
  *     is not a privilege bump. The legacy CLI-subprocess path is kept as
  *     a fallback so a misconfigured `OPENCLAW_ENTRY` does not strand the
  *     wrapper completely. See `devicePairingNode.js`.
+ *
+ * (3) `openclaw devices list --json` ITSELF triggers a scope-upgrade on
+ *     v2026.5.x because `device.pair.list` is a pairing method (least-
+ *     privilege scope = `operator.pairing`) and the wrapper's CLI device
+ *     only holds `operator.read`. The CLI command prints the gateway
+ *     error to stderr followed by local-fallback JSON to stdout. The
+ *     wrapper's `runCmd()` merges both streams; `JSON.parse(out)` fails
+ *     on the error line and the catch block silently returns 0 pending —
+ *     so even with fix (2) in place, the auto-approve loop NEVER sees
+ *     the pending requests it should be approving. End-to-end smoke
+ *     testing on a real v2026.5.x deploy surfaced this; the unit tests
+ *     for fixes (1) and (2) passed but the loop was a no-op in production.
+ *
+ *     Fix: import `listDevicePairing()` directly from openclaw's plugin-SDK,
+ *     matching the same local-trust + Node-import pattern as (2). The CLI
+ *     subprocess remains as a fallback.
  */
 
 import { runCmd } from "./runCmd.js";
 import {
   approveDeviceLocally,
   classifyLocalApproveResult,
+  listDevicePairingLocally,
 } from "./devicePairingNode.js";
 
 // ─── Pure helpers (exported for unit tests) ────────────────────────────────
@@ -157,40 +174,68 @@ function isGatewayNotReady(output) {
  */
 export async function autoApprovePendingOperatorDevices() {
   try {
-    const list = await runCmd("openclaw", ["devices", "list", "--json"]);
-    if (list.code !== 0) {
+    // Primary path: direct Node import of openclaw's `listDevicePairing()`.
+    // Required on v2026.5.x because `openclaw devices list --json` itself
+    // triggers a scope-upgrade prompt — `device.pair.list` is a pairing
+    // method requiring `operator.pairing` and the wrapper's auto-paired
+    // CLI device only holds `operator.read`. The subprocess prints the
+    // gateway error to stderr and the local-fallback JSON to stdout;
+    // `runCmd` merges both streams, so `JSON.parse(out)` fails on the
+    // error line and the wrapper silently returns 0 pending — the
+    // auto-approve loop never sees the requests it should be approving.
+    // See devicePairingNode.js for the full rationale.
+    let parsed;
+    try {
+      parsed = await listDevicePairingLocally();
+    } catch (err) {
+      // Fallback: legacy CLI subprocess. Preserves v2026.2.x behavior and
+      // provides a safety net if `OPENCLAW_ENTRY` is misconfigured or the
+      // openclaw bundle layout changes. Same parse-failure quirk applies
+      // here — if the CLI prints mixed stdout/stderr the parse will fail
+      // and the tick is a no-op, but at least we tried.
+      const msg = err instanceof Error ? err.message : String(err);
       _consecutiveFailures++;
-      if (isGatewayNotReady(list.output)) {
-        if (_consecutiveFailures === 1) {
-          console.log(
-            "[deviceAuth] Gateway not reachable yet, will retry silently"
-          );
-        }
-      } else if (_consecutiveFailures <= 3) {
+      if (_consecutiveFailures <= 3) {
         console.log(
-          `[deviceAuth] devices list failed: exit=${list.code} output=${list.output.trim().slice(0, 200)}`
+          `[deviceAuth] local-node-import list failed (${msg.slice(0, 200)}), falling back to CLI subprocess`
         );
       } else if (_consecutiveFailures === 4) {
         console.log(
-          `[deviceAuth] devices list still failing (${_consecutiveFailures} consecutive), suppressing further logs`
+          `[deviceAuth] local-node-import list still failing (${_consecutiveFailures} consecutive), suppressing further logs`
         );
       }
-      return 0;
+
+      const list = await runCmd("openclaw", ["devices", "list", "--json"]);
+      if (list.code !== 0) {
+        if (isGatewayNotReady(list.output)) {
+          if (_consecutiveFailures === 1) {
+            console.log(
+              "[deviceAuth] Gateway not reachable yet, will retry silently"
+            );
+          }
+        } else if (_consecutiveFailures <= 3) {
+          console.log(
+            `[deviceAuth] devices list failed: exit=${list.code} output=${list.output.trim().slice(0, 200)}`
+          );
+        }
+        return 0;
+      }
+
+      try {
+        parsed = JSON.parse(list.output);
+      } catch {
+        // Partial / non-JSON output during startup or scope-upgrade mixed
+        // stdout/stderr — ignore silently. The Node-import primary path
+        // above is the v2026.5.x escape hatch from this exact failure mode.
+        return 0;
+      }
     }
 
     if (_consecutiveFailures > 0) {
       console.log(
-        `[deviceAuth] devices list recovered after ${_consecutiveFailures} failure(s)`
+        `[deviceAuth] device pairing list recovered after ${_consecutiveFailures} failure(s)`
       );
       _consecutiveFailures = 0;
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(list.output);
-    } catch {
-      // Partial / non-JSON output during startup — ignore silently.
-      return 0;
     }
 
     // v2026.5.x returns `{ pending, paired }`; older builds return a flat
