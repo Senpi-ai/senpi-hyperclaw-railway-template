@@ -13,7 +13,9 @@ import { tokenLogSafe, secureCompare, createCheckProxyAuth } from "../lib/auth.j
 import { ensureGatewayRunning } from "../gateway.js";
 import { isOnboardingInProgress } from "../onboard.js";
 
-const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+function getGatewayToken() {
+  return process.env.OPENCLAW_GATEWAY_TOKEN || "";
+}
 const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD);
 
 function debug(...args) {
@@ -31,16 +33,17 @@ proxy.on("error", (err, _req, _res) => {
 });
 
 proxy.on("proxyReq", (proxyReq, req, res) => {
+  const token = getGatewayToken();
   console.log(
-    `[proxy] HTTP ${req.method} ${req.url} - injecting token (fingerprint: ${tokenLogSafe(gatewayToken)})`
+    `[proxy] HTTP ${req.method} ${req.url} - injecting token (fingerprint: ${tokenLogSafe(token)}, len: ${token.length})`
   );
-  proxyReq.setHeader("Authorization", `Bearer ${gatewayToken}`);
+  proxyReq.setHeader("Authorization", `Bearer ${token}`);
 });
 
 proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
-  proxyReq.setHeader("Authorization", `Bearer ${gatewayToken}`);
+  proxyReq.setHeader("Authorization", `Bearer ${getGatewayToken()}`);
   debug(
-    `[proxy-ws] WebSocket ${req.url} - injected token (fingerprint: ${tokenLogSafe(gatewayToken)})`
+    `[proxy-ws] WebSocket ${req.url} - injected token (fingerprint: ${tokenLogSafe(getGatewayToken())})`
   );
 });
 
@@ -133,14 +136,14 @@ export async function controlUiHandler(req, res, next) {
   if (!isConfigured()) return next();
 
   try {
-    await ensureGatewayRunning(gatewayToken);
+    await ensureGatewayRunning(getGatewayToken());
   } catch {
     return next();
   }
 
   try {
     const upstream = await fetch(`${GATEWAY_TARGET}${req.originalUrl}`, {
-      headers: { Authorization: `Bearer ${gatewayToken}` },
+      headers: { Authorization: `Bearer ${getGatewayToken()}` },
       redirect: "follow",
     });
 
@@ -190,7 +193,7 @@ export async function catchAllMiddleware(req, res) {
 
   if (isConfigured()) {
     try {
-      await ensureGatewayRunning(gatewayToken);
+      await ensureGatewayRunning(getGatewayToken());
     } catch (err) {
       return res
         .status(503)
@@ -230,13 +233,13 @@ export function attachUpgrade(server) {
       return;
     }
     try {
-      await ensureGatewayRunning(gatewayToken);
+      await ensureGatewayRunning(getGatewayToken());
     } catch {
       socket.destroy();
       return;
     }
 
-    if (!gatewayToken) {
+    if (!getGatewayToken()) {
       console.error(
         "[ws-upgrade] Cannot proxy WebSocket: OPENCLAW_GATEWAY_TOKEN is empty"
       );
@@ -244,7 +247,7 @@ export function attachUpgrade(server) {
       return;
     }
 
-    req.headers.authorization = `Bearer ${gatewayToken}`;
+    req.headers.authorization = `Bearer ${getGatewayToken()}`;
     console.log(`[ws-upgrade] Proxying WebSocket to gateway (url=${req.url})`);
     proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
   });
