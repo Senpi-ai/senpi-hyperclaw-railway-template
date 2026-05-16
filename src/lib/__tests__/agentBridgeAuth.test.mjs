@@ -231,3 +231,61 @@ test("isAgentBridgeRequest: remoteIp is irrelevant (server-to-server, behind pro
     true,
   );
 });
+
+// ─── parseSteadyIntervalFromEnv — bugbot #da92a0c4 regression guard ────────
+
+import { parseSteadyIntervalFromEnv } from "../deviceAuth.js";
+
+test("parseSteadyIntervalFromEnv: default when unset", () => {
+  assert.equal(parseSteadyIntervalFromEnv({}), 10000);
+});
+
+test("parseSteadyIntervalFromEnv: valid positive integer is respected", () => {
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "30000" }),
+    30000,
+  );
+});
+
+test("parseSteadyIntervalFromEnv: non-numeric → default (would otherwise be NaN → tight loop)", () => {
+  // setTimeout(fn, NaN) fires in ~1ms on Node, so an unguarded Number()
+  // turns a typo into a CPU saturator. Anything that isn't a positive
+  // finite integer must fall back.
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "abc" }),
+    10000,
+  );
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "10s" }),
+    10000,
+  );
+});
+
+test("parseSteadyIntervalFromEnv: zero / negative → default", () => {
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "0" }),
+    10000,
+  );
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "-5000" }),
+    10000,
+  );
+});
+
+test("parseSteadyIntervalFromEnv: empty / whitespace → default", () => {
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "" }),
+    10000,
+  );
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "   " }),
+    10000,
+  );
+});
+
+test("parseSteadyIntervalFromEnv: Infinity → default (degenerate, would never tick)", () => {
+  assert.equal(
+    parseSteadyIntervalFromEnv({ DEVICE_AUTH_STEADY_INTERVAL_MS: "Infinity" }),
+    10000,
+  );
+});

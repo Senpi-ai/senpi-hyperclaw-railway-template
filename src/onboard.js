@@ -482,8 +482,20 @@ console.log(`[auto-onboard] directory created`);
         ])
       );
     } else {
+      // Lock-step with bootstrap.mjs / gateway.js / setup.js: strip any
+      // stale `true` left by a previous deploy so flipping the env var
+      // actually takes effect. No-op on a fresh config (this is a
+      // not-configured auto-onboard path), kept for parity.
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs([
+          "config",
+          "unset",
+          "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        ])
+      );
       console.log(
-        "[auto-onboard] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipping dangerouslyDisableDeviceAuth write (remote Control UI will require device pairing)"
+        "[auto-onboard] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipped dangerouslyDisableDeviceAuth write (remote Control UI will require device pairing)"
       );
     }
     await runCmd(

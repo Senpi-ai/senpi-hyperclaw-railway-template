@@ -267,9 +267,29 @@ let _consecutiveFailures = 0;
 const BURST_INTERVALS_MS = [
   3_000, 3_000, 4_000, 5_000, 5_000, 10_000, 15_000, 15_000,
 ];
-const STEADY_INTERVAL_MS = Number(
-  process.env.DEVICE_AUTH_STEADY_INTERVAL_MS?.trim() || "10000",
-);
+const DEFAULT_STEADY_INTERVAL_MS = 10_000;
+
+/**
+ * Resolve the steady-state poll cadence from env.
+ *
+ * Guard: a non-numeric override (e.g. `DEVICE_AUTH_STEADY_INTERVAL_MS=abc`)
+ * would yield `NaN`, and `setTimeout(tick, NaN)` fires in ~1ms on Node —
+ * which busy-loops the approval tick and saturates CPU/IO. Anything that
+ * isn't a positive finite integer falls back to the default. Exported for
+ * unit testing.
+ *
+ * @param {NodeJS.ProcessEnv|Record<string,string>} [env]
+ * @returns {number}
+ */
+export function parseSteadyIntervalFromEnv(env = process.env) {
+  const raw = (env.DEVICE_AUTH_STEADY_INTERVAL_MS ?? "").trim();
+  if (raw === "") return DEFAULT_STEADY_INTERVAL_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_STEADY_INTERVAL_MS;
+  return n;
+}
+
+const STEADY_INTERVAL_MS = parseSteadyIntervalFromEnv();
 
 const GATEWAY_NOT_READY_PATTERNS = [
   "gateway connect failed",

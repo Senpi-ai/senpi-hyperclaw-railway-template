@@ -395,8 +395,19 @@ export function createSetupRouter() {
             ])
           );
         } else {
+          // Lock-step with bootstrap.mjs / gateway.js / onboard.js: strip
+          // a stale `true` from any prior deploy so the wizard run honours
+          // the flipped env var. No-op on a fresh openclaw.json.
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "unset",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+            ])
+          );
           console.log(
-            "[setup/run] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipping dangerouslyDisableDeviceAuth write"
+            "[setup/run] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipped dangerouslyDisableDeviceAuth write"
           );
         }
         await runCmd(
