@@ -24,6 +24,7 @@ import {
   stopAutoApprovalLoop,
 } from "./lib/deviceAuth.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
@@ -226,6 +227,24 @@ export async function startGateway(gatewayToken) {
       ])
     );
   }
+  // Origin allowlist (gateway.controlUi.allowedOrigins) — required for the
+  // bridge's webchat-class connect to pass OpenClaw v2026.5.x's origin
+  // check. Re-resolved on every gateway start so a redeploy with a new
+  // RAILWAY_PUBLIC_DOMAIN or AGENT_BRIDGE_ALLOWED_ORIGINS picks up.
+  const allowed = resolveAllowedOrigins();
+  if (allowed.length > 0) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        "gateway.controlUi.allowedOrigins",
+        JSON.stringify(allowed),
+      ])
+    );
+  }
+
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
   if (setDangerousFlag) {

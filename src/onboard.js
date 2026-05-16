@@ -27,6 +27,7 @@ import { clawArgs, ensureGatewayRunning, restartGateway } from "./gateway.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
   STATE_DIR,
@@ -508,6 +509,24 @@ console.log(`[auto-onboard] directory created`);
         JSON.stringify(["127.0.0.1", "::1"]),
       ])
     );
+
+    // Origin allowlist for webchat-class clients (agent-bridge). See
+    // src/lib/allowedOrigins.js for the rationale.
+    {
+      const allowed = resolveAllowedOrigins();
+      if (allowed.length > 0) {
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs([
+            "config",
+            "set",
+            "--json",
+            "gateway.controlUi.allowedOrigins",
+            JSON.stringify(allowed),
+          ])
+        );
+      }
+    }
 
     if (TELEGRAM_BOT_TOKEN) {
       console.log("[auto-onboard] Configuring Telegram channel...");

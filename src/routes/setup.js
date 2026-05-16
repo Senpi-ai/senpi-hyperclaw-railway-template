@@ -35,6 +35,7 @@ import {
   resolveAgentId,
 } from "../lib/agentBridgeCreds.js";
 import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "../lib/allowedOrigins.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -232,6 +233,15 @@ export function createSetupRouter() {
       });
     }
 
+    // Surface the Origin OpenClaw will accept on the bridge's south WS
+    // dial. The bridge MUST send `Origin: <requiredOrigin>` or the
+    // gateway returns CONTROL_UI_ORIGIN_NOT_ALLOWED for webchat-class
+    // clients. Derived from the same domain as `gatewayUrl` so they
+    // always agree.
+    const allowedOrigins = resolveAllowedOrigins(process.env);
+    const requiredOrigin = `wss://${process.env.RAILWAY_PUBLIC_DOMAIN?.trim() || forwardedHost}`
+      .replace(/^wss:/, "https:");
+
     res.set("Cache-Control", "no-store");
     res.json({
       gatewayUrl,
@@ -240,6 +250,8 @@ export function createSetupRouter() {
         env: process.env,
         hostname: os.hostname(),
       }),
+      requiredOrigin,
+      allowedOrigins,
     });
   });
 
@@ -420,6 +432,24 @@ export function createSetupRouter() {
             JSON.stringify(["127.0.0.1", "::1"]),
           ])
         );
+
+        // Origin allowlist for webchat-class clients (agent-bridge). See
+        // src/lib/allowedOrigins.js for the rationale.
+        {
+          const allowed = resolveAllowedOrigins();
+          if (allowed.length > 0) {
+            await runCmd(
+              OPENCLAW_NODE,
+              clawArgs([
+                "config",
+                "set",
+                "--json",
+                "gateway.controlUi.allowedOrigins",
+                JSON.stringify(allowed),
+              ])
+            );
+          }
+        }
 
         const channelsHelp = await runCmd(
           OPENCLAW_NODE,
