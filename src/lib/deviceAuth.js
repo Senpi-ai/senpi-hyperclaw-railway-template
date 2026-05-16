@@ -137,16 +137,139 @@ export function isLoopbackOperatorRequest(req) {
   );
 }
 
+// ─── Agent-bridge predicate ────────────────────────────────────────────────
+//
+// External clients (e.g. the Go agent-bridge in Senpi-ai/agent-bridge,
+// `v3/go-rewrite`) connect from a remote host with
+//   client.id = "webchat-ui"  client.mode = "webchat"
+//   role      = "user"        scopes      = ["chat"]
+// and a bootstrap token that OpenClaw validates against the gateway shared
+// secret before placing the request in `pendingRequests`. We auto-approve
+// such requests so the v3 handshake (`connect.challenge` → signed connect
+// → `hello-ok`) can complete without a human approver.
+//
+// Trust boundary: the bootstrap-token check upstream of this predicate is
+// the real gate. `client.id` is metadata the connecting peer types; an
+// attacker with the token can claim any allowlisted id. The allowlist
+// exists to (a) keep the auto-approval narrow to the user-role chat path,
+// and (b) make the threat model legible in CLAUDE.md Quirk #14.
+
+const DEFAULT_BRIDGE_CONFIG = Object.freeze({
+  clientIds: Object.freeze(["webchat-ui", "senpi-mobile", "senpi-web"]),
+  clientModes: Object.freeze(["webchat"]),
+  scopes: Object.freeze(["chat"]),
+});
+
+function csvOrDefault(value, fallback) {
+  if (value === undefined || value === null) return [...fallback];
+  return String(value)
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Read the agent-bridge allowlist from env vars (or the supplied object).
+ *
+ * `AGENT_BRIDGE_CLIENT_IDS`   default: webchat-ui,senpi-mobile,senpi-web
+ * `AGENT_BRIDGE_CLIENT_MODES` default: webchat
+ * `AGENT_BRIDGE_SCOPES_ALLOWLIST` default: chat
+ *
+ * An empty-string value yields an empty list — that locks pairings out
+ * completely (operator opt-out), distinct from "unset" which uses defaults.
+ *
+ * @param {NodeJS.ProcessEnv|Record<string,string>} [env]
+ * @returns {{clientIds:string[], clientModes:string[], scopes:string[]}}
+ */
+export function parseAgentBridgeConfigFromEnv(env = process.env) {
+  return {
+    clientIds: csvOrDefault(
+      env.AGENT_BRIDGE_CLIENT_IDS,
+      DEFAULT_BRIDGE_CONFIG.clientIds,
+    ),
+    clientModes: csvOrDefault(
+      env.AGENT_BRIDGE_CLIENT_MODES,
+      DEFAULT_BRIDGE_CONFIG.clientModes,
+    ),
+    scopes: csvOrDefault(
+      env.AGENT_BRIDGE_SCOPES_ALLOWLIST,
+      DEFAULT_BRIDGE_CONFIG.scopes,
+    ),
+  };
+}
+
+/**
+ * Predicate: is this pending request an agent-bridge user-chat pairing
+ * that we should auto-approve?
+ *
+ * Yes when ALL of:
+ *   - has a non-empty `requestId`,
+ *   - resolved `role === "user"` (operators go through the existing
+ *     loopback predicate),
+ *   - `client.id` ∈ cfg.clientIds (case-sensitive, exact match),
+ *   - `client.mode` ∈ cfg.clientModes,
+ *   - scopes is a non-empty array AND every member is in cfg.scopes.
+ *
+ * Note: NO `remoteIp` check — bridge clients connect from anywhere on the
+ * internet and reach OpenClaw through the wrapper proxy. The trust gate
+ * is the bootstrap token validated upstream.
+ *
+ * @param {object} req     openclaw pending-request record
+ * @param {{clientIds:string[], clientModes:string[], scopes:string[]}} cfg
+ * @returns {boolean}
+ */
+export function isAgentBridgeRequest(req, cfg) {
+  if (!req || typeof req !== "object" || Array.isArray(req)) return false;
+
+  const requestId =
+    req.requestId ?? req.request_id ?? req.id ?? req.deviceId ?? req.device_id;
+  if (!requestId || typeof requestId !== "string") return false;
+
+  if (String(req.role ?? "").toLowerCase() !== "user") return false;
+
+  const clientId =
+    (req.client && typeof req.client === "object" ? req.client.id : undefined) ??
+    req.clientId;
+  const clientMode =
+    (req.client && typeof req.client === "object"
+      ? req.client.mode
+      : undefined) ?? req.clientMode;
+
+  if (typeof clientId !== "string" || !cfg.clientIds.includes(clientId)) {
+    return false;
+  }
+  if (typeof clientMode !== "string" || !cfg.clientModes.includes(clientMode)) {
+    return false;
+  }
+
+  if (!Array.isArray(req.scopes) || req.scopes.length === 0) return false;
+  for (const s of req.scopes) {
+    if (typeof s !== "string" || !cfg.scopes.includes(s)) return false;
+  }
+
+  return true;
+}
+
 let _loopRunning = false;
 let _timer = null;
 let _consecutiveFailures = 0;
 
 // Burst phase: aggressive polling for the first ~60s after gateway start,
 // then settle into a steady cadence for ongoing maintenance.
+//
+// The steady cadence used to be 60s, tuned for "internal clients pair once
+// at boot then never again". External agent-bridge clients can connect at
+// any point in process lifetime and must clear pairing inside their
+// reconnect-backoff cap (default 30s on `v3/go-rewrite`). 10s keeps the
+// worst-case approval latency well inside that window; the list call is a
+// cheap filesystem read via `listDevicePairingLocally`. Overridable via
+// `DEVICE_AUTH_STEADY_INTERVAL_MS` if an operator wants the old behaviour.
 const BURST_INTERVALS_MS = [
   3_000, 3_000, 4_000, 5_000, 5_000, 10_000, 15_000, 15_000,
 ];
-const STEADY_INTERVAL_MS = 60_000;
+const STEADY_INTERVAL_MS = Number(
+  process.env.DEVICE_AUTH_STEADY_INTERVAL_MS?.trim() || "10000",
+);
 
 const GATEWAY_NOT_READY_PATTERNS = [
   "gateway connect failed",
@@ -239,10 +362,13 @@ export async function autoApprovePendingOperatorDevices() {
     }
 
     // v2026.5.x returns `{ pending, paired }`; older builds return a flat
-    // array. `extractPendingRequests` normalizes; `isLoopbackOperatorRequest`
-    // filters. Both are exported for unit tests — see __tests__/deviceAuth.test.mjs.
+    // array. `extractPendingRequests` normalizes; the OR of the two
+    // predicates filters: existing loopback-operator path (internal clients)
+    // PLUS the agent-bridge user-chat path (external clients that passed
+    // the upstream bootstrap-token gate).
+    const bridgeCfg = parseAgentBridgeConfigFromEnv();
     const pending = extractPendingRequests(parsed).filter(
-      isLoopbackOperatorRequest,
+      (r) => isLoopbackOperatorRequest(r) || isAgentBridgeRequest(r, bridgeCfg),
     );
 
     if (pending.length === 0) return 0;
