@@ -199,20 +199,25 @@ export function parseAgentBridgeConfigFromEnv(env = process.env) {
 }
 
 /**
- * Predicate: is this pending request an agent-bridge user-chat pairing
- * that we should auto-approve?
+ * Predicate: is this pending request an agent-bridge chat pairing that
+ * we should auto-approve?
  *
  * Yes when ALL of:
  *   - has a non-empty `requestId`,
- *   - resolved `role === "user"` (operators go through the existing
- *     loopback predicate),
+ *   - resolved role is "operator" (OpenClaw v2026.5.x's GatewayRole enum
+ *     is exactly ["operator", "node"] — see role-policy.ts:3. The v3
+ *     spec contemplates a future "user" role but the gateway rejects it
+ *     with INVALID_REQUEST today, so the bridge sends "operator". Some
+ *     OpenClaw versions emit a `roles` array alongside / instead of
+ *     `role`; accept either.),
  *   - `client.id` ∈ cfg.clientIds (case-sensitive, exact match),
  *   - `client.mode` ∈ cfg.clientModes,
  *   - scopes is a non-empty array AND every member is in cfg.scopes.
  *
  * Note: NO `remoteIp` check — bridge clients connect from anywhere on the
  * internet and reach OpenClaw through the wrapper proxy. The trust gate
- * is the bootstrap token validated upstream.
+ * is the bootstrap token validated upstream by OpenClaw before the
+ * request even appears in pendingRequests.
  *
  * @param {object} req     openclaw pending-request record
  * @param {{clientIds:string[], clientModes:string[], scopes:string[]}} cfg
@@ -225,7 +230,11 @@ export function isAgentBridgeRequest(req, cfg) {
     req.requestId ?? req.request_id ?? req.id ?? req.deviceId ?? req.device_id;
   if (!requestId || typeof requestId !== "string") return false;
 
-  if (String(req.role ?? "").toLowerCase() !== "user") return false;
+  const role = String(req.role ?? "").toLowerCase();
+  const roles = Array.isArray(req.roles)
+    ? req.roles.map((r) => String(r).toLowerCase())
+    : [];
+  if (role !== "operator" && !roles.includes("operator")) return false;
 
   const clientId =
     (req.client && typeof req.client === "object" ? req.client.id : undefined) ??

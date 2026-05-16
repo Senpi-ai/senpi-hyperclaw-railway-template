@@ -71,7 +71,7 @@ const defaultCfg = {
 function bridgeReq(overrides = {}) {
   return {
     requestId: "req-abc",
-    role: "user",
+    role: "operator",
     scopes: ["chat"],
     client: { id: "webchat-ui", mode: "webchat" },
     remoteIp: "203.0.113.7",
@@ -79,8 +79,19 @@ function bridgeReq(overrides = {}) {
   };
 }
 
-test("isAgentBridgeRequest: canonical webchat-ui/user/chat → true", () => {
+test("isAgentBridgeRequest: canonical webchat-ui/operator/chat → true", () => {
+  // Note: role MUST be "operator", not "user" — OpenClaw v2026.5.x's
+  // GatewayRole enum is exactly ["operator", "node"] (role-policy.ts:3).
+  // The bridge accordingly sends role=operator (orchestrator.go).
   assert.equal(isAgentBridgeRequest(bridgeReq(), defaultCfg), true);
+});
+
+test("isAgentBridgeRequest: roles array (no role field) is accepted", () => {
+  // OpenClaw's plugin-sdk listDevicePairing emits both `role` and `roles`.
+  // Either being "operator" should satisfy.
+  const r = bridgeReq({ roles: ["operator"] });
+  delete r.role;
+  assert.equal(isAgentBridgeRequest(r, defaultCfg), true);
 });
 
 test("isAgentBridgeRequest: senpi-mobile in allowlist → true", () => {
@@ -100,7 +111,7 @@ test("isAgentBridgeRequest: flat client.id field (v2026.5.x list shape) → true
     isAgentBridgeRequest(
       {
         requestId: "r",
-        role: "user",
+        role: "operator",
         scopes: ["chat"],
         clientId: "webchat-ui",
         clientMode: "webchat",
@@ -125,9 +136,12 @@ test("isAgentBridgeRequest: scopes subset of allowlist → true", () => {
 
 // ─── isAgentBridgeRequest — rejections ─────────────────────────────────────
 
-test("isAgentBridgeRequest: role=operator → false (operator path is the existing predicate)", () => {
+test("isAgentBridgeRequest: role=node → false (only operator allowed for chat scope)", () => {
+  // OpenClaw's other valid role is `node`, used for backend nodes that
+  // serve methods, not for chat clients. Rejecting it keeps the
+  // allowlist narrow to the actual bridge use-case.
   assert.equal(
-    isAgentBridgeRequest(bridgeReq({ role: "operator" }), defaultCfg),
+    isAgentBridgeRequest(bridgeReq({ role: "node", roles: ["node"] }), defaultCfg),
     false,
   );
 });
