@@ -257,8 +257,11 @@ export async function startGateway(gatewayToken) {
       );
     }
   } else {
+    // Default since 2026-05-16: flag is intentionally omitted. Set
+    // OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in
+    // (see CLAUDE.md Quirk #15).
     console.log(
-      `[gateway] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — flag intentionally omitted; verified: ${devAuth === undefined ? "absent" : devAuth}`
+      `[gateway] dangerouslyDisableDeviceAuth omitted (default); verified: ${devAuth === undefined ? "absent" : devAuth}`
     );
   }
 

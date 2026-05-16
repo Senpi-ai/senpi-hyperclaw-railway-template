@@ -2,29 +2,39 @@
  * Resolve whether the wrapper writes
  * `gateway.controlUi.dangerouslyDisableDeviceAuth=true` into `openclaw.json`.
  *
- * Background — Quirk #7 in CLAUDE.md:
- *   The flag was set unconditionally to keep two things working:
- *     (a) Internal clients (Telegram provider, cron, session WS) connecting
- *         over loopback. On v2026.5.7 these no longer need it — they pass
- *         through OpenClaw's `shouldSkipLocalBackendSelfPairing` exemption
- *         (`handshake-auth-helpers.ts:252-272`), an unrelated code path.
- *     (b) The **Control UI browser**. The flag's effect is gated by
- *         `isControlUi && role === "operator"` in `connect-policy.ts:122-130`.
- *         On a remote Railway HTTPS host the browser CAN device-pair via
- *         SubtleCrypto, but the wrapper's auto-approval loop currently
- *         only approves loopback pairings — so a remote Control UI browser
- *         would block on a missing human approver.
+ * Why this exists (revised — Quirk #15 in CLAUDE.md):
  *
- *   Removing the flag is therefore safe **iff** the operator either
- *   doesn't use the Control UI from outside the container, or has a
- *   matching auto-approval extension in place. We expose this as an
- *   env-var hatch so individual deployments can opt out without forking.
+ *   OpenClaw v2026.5.7's `connect-policy.ts:25-34, 122-130` gates the
+ *   flag on `isControlUi && role === "operator"`. Two things follow:
  *
- * Semantics:
- *   - Default (env var unset or any value other than "false" / "0"): keep
- *     the flag in `openclaw.json`. Existing behaviour preserved.
- *   - Set `OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false` (or `0`): omit
- *     the flag. Remote Control UI access will require real device pairing.
+ *   (a) **Internal clients** (Telegram provider, cron, session WS) are
+ *       NOT controlUi, so the flag never engages for them. They pass
+ *       through `shouldSkipLocalBackendSelfPairing` (`handshake-auth-helpers.ts:252-272`),
+ *       an unrelated code path. The old Quirk #7 claim that the flag
+ *       was load-bearing for internal clients was stale on v2026.5.x.
+ *
+ *   (b) **The bridge** (agent-bridge `client.id=webchat-ui`,
+ *       `mode=webchat`) is classified as `isWebchat`, not `isControlUi`
+ *       (`utils/message-channel.ts`). Same conclusion: flag never engages.
+ *       Smoke against `fresh-openclaw-deploy` (PR #59) confirmed the
+ *       wrapper's `isAgentBridgeRequest` auto-approval is what unblocks
+ *       the bridge — not the flag.
+ *
+ *   The flag's ONLY real effect is admitting a **remote Control UI
+ *   browser** without device pairing. The product surface is moving to
+ *   senpi-web → agent-bridge → openclaw; Control UI is a debugging
+ *   convenience that the operator can recover via `railway ssh` + the
+ *   openclaw CLI from inside the container. So we default-OFF and let
+ *   anyone who still wants browser Control UI opt back in.
+ *
+ * Semantics (new default):
+ *   - Default (env var unset OR any value other than "true" / "1" /
+ *     "yes" / "on"): omit the flag from `openclaw.json`. Drops the
+ *     `[gateway] security warning: dangerous config flags enabled: …`
+ *     line from boot logs.
+ *   - Set `OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true` to restore
+ *     the old behaviour (required if you need remote Control UI
+ *     access from a browser without pairing).
  *
  * @param {NodeJS.ProcessEnv|Record<string,string>} [env]
  * @returns {boolean}
@@ -33,8 +43,8 @@ export function shouldSetDangerousDeviceAuthFlag(env = process.env) {
   const raw = (env.OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH ?? "")
     .trim()
     .toLowerCase();
-  if (raw === "false" || raw === "0" || raw === "no" || raw === "off") {
-    return false;
+  if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") {
+    return true;
   }
-  return true;
+  return false;
 }

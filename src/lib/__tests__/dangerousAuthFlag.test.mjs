@@ -1,12 +1,16 @@
 /**
  * Tests for the OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH env-var hatch.
  *
- * The wrapper used to unconditionally write
- * `gateway.controlUi.dangerouslyDisableDeviceAuth=true`. The hatch keeps
- * that as the default (so existing deployments are unaffected) and lets
- * an operator opt out by setting the env var to `false` / `0`.
+ * Default flipped 2026-05-16 (PR #59): we now omit
+ * `gateway.controlUi.dangerouslyDisableDeviceAuth` by default. The flag
+ * never engaged for internal clients (different code path) and never
+ * engaged for the bridge (`isWebchat`, not `isControlUi`). Its only
+ * real effect was admitting a remote Control UI browser without
+ * pairing — a debugging convenience we drop in favour of `railway ssh`
+ * + the openclaw CLI. Operators who still want browser Control UI can
+ * opt back in with `OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true`.
  *
- * See `src/lib/dangerousAuthFlag.js` for the trust-boundary rationale.
+ * See `src/lib/dangerousAuthFlag.js` for the full rationale.
  *
  * Run:
  *   node --test src/lib/__tests__/dangerousAuthFlag.test.mjs
@@ -15,11 +19,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { shouldSetDangerousDeviceAuthFlag } from "../dangerousAuthFlag.js";
 
-test("default (var unset) → keep flag on (true)", () => {
-  assert.equal(shouldSetDangerousDeviceAuthFlag({}), true);
+test("default (var unset) → flag omitted (false)", () => {
+  assert.equal(shouldSetDangerousDeviceAuthFlag({}), false);
 });
 
-test("explicit \"true\" → true", () => {
+test('explicit "true" → flag written (opt-in for browser Control UI)', () => {
   assert.equal(
     shouldSetDangerousDeviceAuthFlag({
       OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "true",
@@ -28,59 +32,59 @@ test("explicit \"true\" → true", () => {
   );
 });
 
-test("explicit \"false\" → false (omit flag)", () => {
-  assert.equal(
-    shouldSetDangerousDeviceAuthFlag({
-      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "false",
-    }),
-    false,
-  );
+test('explicit "1" / "yes" / "on" → true (linux-shell idioms)', () => {
+  for (const v of ["1", "yes", "on", "YES", "On"]) {
+    assert.equal(
+      shouldSetDangerousDeviceAuthFlag({
+        OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: v,
+      }),
+      true,
+      `value=${JSON.stringify(v)}`,
+    );
+  }
 });
 
-test("explicit \"0\" → false", () => {
-  assert.equal(
-    shouldSetDangerousDeviceAuthFlag({
-      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "0",
-    }),
-    false,
-  );
-});
-
-test("explicit \"no\" / \"off\" → false (linux-shell idioms)", () => {
-  assert.equal(
-    shouldSetDangerousDeviceAuthFlag({
-      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "no",
-    }),
-    false,
-  );
-  assert.equal(
-    shouldSetDangerousDeviceAuthFlag({
-      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "off",
-    }),
-    false,
-  );
+test('explicit "false" / "0" / "no" / "off" → false (same as default)', () => {
+  for (const v of ["false", "0", "no", "off", "FALSE", "Off"]) {
+    assert.equal(
+      shouldSetDangerousDeviceAuthFlag({
+        OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: v,
+      }),
+      false,
+      `value=${JSON.stringify(v)}`,
+    );
+  }
 });
 
 test("trims whitespace and lowercases input", () => {
   assert.equal(
     shouldSetDangerousDeviceAuthFlag({
-      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "  FALSE  ",
+      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: "  TRUE  ",
     }),
-    false,
+    true,
   );
 });
 
-test("unrecognized values (typos, garbage) → keep flag on (safe default)", () => {
-  // Conservative default: if an operator typos the env var, we keep the
-  // current behaviour rather than silently disabling the flag. Better to
-  // be loudly unchanged than quietly different.
-  for (const val of ["1", "yes", "garbage", "FALSE_TYPO", "true!", ""]) {
+test("unrecognized values (typos, garbage) → false (safe default)", () => {
+  // The new default is OFF, so any unrecognised value also stays OFF.
+  // A typo doesn't accidentally re-enable a `dangerously*` flag — fail
+  // closed rather than open.
+  for (const val of ["garbage", "TRUE_TYPO", "true!", "1.0", ""]) {
     assert.equal(
       shouldSetDangerousDeviceAuthFlag({
         OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: val,
       }),
-      true,
+      false,
       `value=${JSON.stringify(val)}`,
     );
   }
+});
+
+test("undefined / null env values → false", () => {
+  assert.equal(
+    shouldSetDangerousDeviceAuthFlag({
+      OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH: undefined,
+    }),
+    false,
+  );
 });

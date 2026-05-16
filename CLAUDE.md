@@ -268,4 +268,15 @@ This avoids repeatedly reading large files and provides instant context about th
 
     **Pairing latency**: bridge connects → OpenClaw queues request → wrapper's loop approves within `DEVICE_AUTH_STEADY_INTERVAL_MS` (default `10s`, was `60s`). Combined with the bridge's reconnect-backoff (1s base, 30s cap on `v3/go-rewrite`), pairing typically completes inside the bridge's first 2–3 retry attempts.
 
-15. **`OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH` env-var hatch** → Default behaviour unchanged: the wrapper still writes `gateway.controlUi.dangerouslyDisableDeviceAuth=true` so a remote Control UI browser works without device pairing. Set the var to `false` (or `0`/`no`/`off`) to omit the flag from `openclaw.json` for deployments that don't need Control UI from outside the container. Internal clients (Telegram provider, cron, session WS) are unaffected — they pass through OpenClaw's `shouldSkipLocalBackendSelfPairing` exemption (`handshake-auth-helpers.ts:252-272`), an unrelated code path the flag never touched. See `src/lib/dangerousAuthFlag.js`. **The four write-sites kept in lock-step**: `src/bootstrap.mjs`, `src/onboard.js`, `src/gateway.js`, `src/routes/setup.js` — any future change must update all four together or the wrapper drifts between boot and re-onboard.
+15. **`OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH` default is OFF (changed 2026-05-16)** → The wrapper no longer writes `gateway.controlUi.dangerouslyDisableDeviceAuth=true` by default. Rationale, verified against OpenClaw v2026.5.7 source:
+    - **Internal clients** (Telegram provider, cron, session WS) never needed the flag — they're not `isControlUi`, so the flag's guard in `connect-policy.ts:122-130` never engaged. They pass through `shouldSkipLocalBackendSelfPairing` (`handshake-auth-helpers.ts:252-272`), an unrelated code path.
+    - **The agent-bridge** (`client.id=webchat-ui mode=webchat`) is classified as `isWebchat`, not `isControlUi` (`utils/message-channel.ts`) — same conclusion. Smoke against `fresh-openclaw-deploy` (PR #59) confirmed the wrapper's `isAgentBridgeRequest` auto-approval is what unblocks the bridge, not the flag.
+    - **The flag's ONLY real effect** was admitting a remote Control UI browser without device pairing. The product surface is moving to senpi-web → agent-bridge → openclaw; Control UI is now a debugging convenience recoverable via `railway ssh` + the openclaw CLI from inside the container.
+
+    Operators who still want browser-based Control UI without pairing can opt back in:
+    ```
+    OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
+    ```
+    Accepted truthy values: `true` / `1` / `yes` / `on` (trim + lowercase). Anything else (including typos) stays OFF — fail-closed for a `dangerously*` flag.
+
+    **The four write-sites kept in lock-step**: `src/bootstrap.mjs`, `src/onboard.js`, `src/gateway.js`, `src/routes/setup.js` — any future change must update all four together or the wrapper drifts between boot and re-onboard. On the disable branch (default), `gateway.js` also runs `config unset` to strip a stale `true` left by a previous deploy.

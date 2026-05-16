@@ -181,16 +181,25 @@ the bootstrap token (verified upstream by OpenClaw) is the real gate.
 The allowlist exists to narrow auto-approval to the user-chat path so
 operator-scope upgrades still need a human. See `CLAUDE.md` Quirk #14.
 
-### Optional: retire `dangerouslyDisableDeviceAuth`
+### Optional: re-enable `dangerouslyDisableDeviceAuth`
 
-The wrapper writes `gateway.controlUi.dangerouslyDisableDeviceAuth=true`
-by default so a remote Control UI browser can connect without device
-pairing. If you don't use the Control UI from outside the container, set:
+As of 2026-05-16 the wrapper **no longer writes**
+`gateway.controlUi.dangerouslyDisableDeviceAuth` by default. The flag
+never engaged for internal clients or the agent-bridge (different code
+paths); its only real effect was admitting a remote Control UI browser
+without device pairing.
+
+If you still want browser-based Control UI access without pairing
+(debugging convenience), opt back in:
 
 ```
-OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false
+OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
 ```
 
-…and the flag is omitted from `openclaw.json`. Internal clients
-(Telegram provider, cron, session WS) are unaffected — they pass via
-OpenClaw's `shouldSkipLocalBackendSelfPairing` exemption.
+Otherwise debug from inside the container:
+
+```sh
+railway ssh
+openclaw sessions ls
+openclaw devices list --json
+```

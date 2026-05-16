@@ -496,7 +496,7 @@ console.log(`[auto-onboard] directory created`);
         ])
       );
       console.log(
-        "[auto-onboard] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipped dangerouslyDisableDeviceAuth write (remote Control UI will require device pairing)"
+        "[auto-onboard] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
       );
     }
     await runCmd(
