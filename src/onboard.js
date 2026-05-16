@@ -26,6 +26,7 @@ import { runCmd } from "./lib/runCmd.js";
 import { clawArgs, ensureGatewayRunning, restartGateway } from "./gateway.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 
 const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
   STATE_DIR,
@@ -469,16 +470,22 @@ console.log(`[auto-onboard] directory created`);
         "true",
       ])
     );
-    await runCmd(
-      OPENCLAW_NODE,
-      clawArgs([
-        "config",
-        "set",
-        "--json",
-        "gateway.controlUi.dangerouslyDisableDeviceAuth",
-        "true",
-      ])
-    );
+    if (shouldSetDangerousDeviceAuthFlag()) {
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs([
+          "config",
+          "set",
+          "--json",
+          "gateway.controlUi.dangerouslyDisableDeviceAuth",
+          "true",
+        ])
+      );
+    } else {
+      console.log(
+        "[auto-onboard] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipping dangerouslyDisableDeviceAuth write (remote Control UI will require device pairing)"
+      );
+    }
     await runCmd(
       OPENCLAW_NODE,
       clawArgs([

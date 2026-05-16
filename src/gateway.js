@@ -23,6 +23,7 @@ import {
   startAutoApprovalLoop,
   stopAutoApprovalLoop,
 } from "./lib/deviceAuth.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
@@ -200,24 +201,45 @@ export async function startGateway(gatewayToken) {
       "true",
     ])
   );
-  await runCmd(
-    OPENCLAW_NODE,
-    clawArgs([
-      "config",
-      "set",
-      "--json",
-      "gateway.controlUi.dangerouslyDisableDeviceAuth",
-      "true",
-    ])
-  );
+  const setDangerousFlag = shouldSetDangerousDeviceAuthFlag();
+  if (setDangerousFlag) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        "true",
+      ])
+    );
+  } else {
+    // Hatch: operator opted out via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false.
+    // Strip any pre-existing setting so a redeploy that flips the var actually
+    // takes effect — otherwise the previous `true` would persist in openclaw.json.
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "unset",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+      ])
+    );
+  }
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
-  console.log(
-    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
-  );
-  if (devAuth !== true) {
-    console.warn(
-      `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+  if (setDangerousFlag) {
+    console.log(
+      `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
+    );
+    if (devAuth !== true) {
+      console.warn(
+        `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+      );
+    }
+  } else {
+    console.log(
+      `[gateway] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — flag intentionally omitted; verified: ${devAuth === undefined ? "absent" : devAuth}`
     );
   }
 

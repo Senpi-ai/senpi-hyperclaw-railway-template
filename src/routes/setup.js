@@ -29,6 +29,12 @@ import {
 } from "../onboard.js";
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
+import os from "node:os";
+import {
+  buildBridgeGatewayUrl,
+  resolveAgentId,
+} from "../lib/agentBridgeCreds.js";
+import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -172,6 +178,71 @@ export function createSetupRouter() {
     res.json({ token: gatewayToken });
   });
 
+  // Integration credentials for an external agent-bridge (Senpi-ai/agent-bridge,
+  // `v3/go-rewrite`). Operator-only: Basic auth via SETUP_PASSWORD. Returns
+  // the three env vars the bridge needs to dial the v3 device-pair handshake
+  // against this Railway deployment. Audit-logged so credential reads are
+  // recoverable from log history.
+  router.get("/api/agent-bridge-creds", requireSetupAuth, async (req, res) => {
+    console.warn(
+      `[agent-bridge-creds] CREDENTIALS READ at ${new Date().toISOString()} ` +
+        `(auth passed, ua=${(req.headers["user-agent"] || "").slice(0, 80)})`,
+    );
+
+    // Read the token at request time, not at module-load time. The
+    // existing module-level `gatewayToken` const captures the env var
+    // BEFORE `server.js` calls `resolveGatewayToken()` and reflects it
+    // back into `process.env`, so on a deployment that resolved the
+    // token from a persisted file (no env var set), the import-time
+    // const is "" while `process.env.OPENCLAW_GATEWAY_TOKEN` is correct.
+    const currentToken = process.env.OPENCLAW_GATEWAY_TOKEN || gatewayToken;
+    try {
+      await ensureGatewayRunning(currentToken);
+    } catch (err) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "gateway_not_ready",
+        detail: String(err?.message || err),
+      });
+    }
+
+    const forwardedHost =
+      typeof req.headers.host === "string" ? req.headers.host : undefined;
+    const gatewayUrl = buildBridgeGatewayUrl({
+      env: process.env,
+      forwardedHost,
+    });
+
+    if (!gatewayUrl) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "no_public_host",
+        detail:
+          "RAILWAY_PUBLIC_DOMAIN is unset and the request did not include a Host header. " +
+          "Enable Railway public networking, or set RAILWAY_PUBLIC_DOMAIN explicitly.",
+      });
+    }
+
+    if (!currentToken) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "gateway_token_unresolved",
+        detail:
+          "Gateway token is not yet resolved. The wrapper may still be starting; retry shortly.",
+      });
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      gatewayUrl,
+      bootstrapToken: currentToken,
+      agentId: resolveAgentId({
+        env: process.env,
+        hostname: os.hostname(),
+      }),
+    });
+  });
+
   router.get("/api/status", requireSetupAuth, async (_req, res) => {
     const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
     const channelsHelp = await runCmd(
@@ -312,16 +383,22 @@ export function createSetupRouter() {
             "true",
           ])
         );
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs([
-            "config",
-            "set",
-            "--json",
-            "gateway.controlUi.dangerouslyDisableDeviceAuth",
-            "true",
-          ])
-        );
+        if (shouldSetDangerousDeviceAuthFlag()) {
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+              "true",
+            ])
+          );
+        } else {
+          console.log(
+            "[setup/run] OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false — skipping dangerouslyDisableDeviceAuth write"
+          );
+        }
         await runCmd(
           OPENCLAW_NODE,
           clawArgs([
