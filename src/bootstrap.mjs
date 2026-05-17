@@ -8,6 +8,8 @@ import {
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
 import { TELEGRAM_USERNAME } from "./lib/config.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -153,7 +155,18 @@ function patchOpenClawJson() {
         allowInsecureAuth: true,
         // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
         // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
-        dangerouslyDisableDeviceAuth: true,
+        // Hatch: set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false to omit the
+        // flag (only safe when remote Control UI access isn't needed — see Quirk #7).
+        ...(shouldSetDangerousDeviceAuthFlag()
+          ? { dangerouslyDisableDeviceAuth: true }
+          : {}),
+        // OpenClaw v2026.5.x rejects webchat-class connections (including the
+        // agent-bridge in Senpi-ai/agent-bridge `v3/go-rewrite`) with
+        // CONTROL_UI_ORIGIN_NOT_ALLOWED unless the client's Origin header is
+        // listed here. Default includes the Railway public domain + localhost
+        // dev fallbacks; AGENT_BRIDGE_ALLOWED_ORIGINS adds more (CSV, `*`
+        // accepted as wildcard).
+        allowedOrigins: resolveAllowedOrigins(),
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],

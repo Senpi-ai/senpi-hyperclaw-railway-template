@@ -29,6 +29,14 @@ import {
 } from "../onboard.js";
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
+import os from "node:os";
+import {
+  buildBridgeGatewayUrl,
+  resolveAgentId,
+} from "../lib/agentBridgeCreds.js";
+import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "../lib/allowedOrigins.js";
+import { resolveNotificationsSessionKey } from "../lib/notificationsSessionKey.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -172,6 +180,108 @@ export function createSetupRouter() {
     res.json({ token: gatewayToken });
   });
 
+  // Integration credentials for an external agent-bridge (Senpi-ai/agent-bridge,
+  // `v3/go-rewrite`). Operator-only: Basic auth via SETUP_PASSWORD. Returns
+  // the three env vars the bridge needs to dial the v3 device-pair handshake
+  // against this Railway deployment. Audit-logged so credential reads are
+  // recoverable from log history.
+  router.get("/api/agent-bridge-creds", requireSetupAuth, async (req, res) => {
+    console.warn(
+      `[agent-bridge-creds] CREDENTIALS READ at ${new Date().toISOString()} ` +
+        `(auth passed, ua=${(req.headers["user-agent"] || "").slice(0, 80)})`,
+    );
+
+    // Read the token at request time, not at module-load time. The
+    // existing module-level `gatewayToken` const captures the env var
+    // BEFORE `server.js` calls `resolveGatewayToken()` and reflects it
+    // back into `process.env`, so on a deployment that resolved the
+    // token from a persisted file (no env var set), the import-time
+    // const is "" while `process.env.OPENCLAW_GATEWAY_TOKEN` is correct.
+    const currentToken = process.env.OPENCLAW_GATEWAY_TOKEN || gatewayToken;
+    try {
+      await ensureGatewayRunning(currentToken);
+    } catch (err) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "gateway_not_ready",
+        detail: String(err?.message || err),
+      });
+    }
+
+    const forwardedHost =
+      typeof req.headers.host === "string" ? req.headers.host : undefined;
+    const gatewayUrl = buildBridgeGatewayUrl({
+      env: process.env,
+      forwardedHost,
+    });
+
+    if (!gatewayUrl) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "no_public_host",
+        detail:
+          "RAILWAY_PUBLIC_DOMAIN is unset and the request did not include a Host header. " +
+          "Enable Railway public networking, or set RAILWAY_PUBLIC_DOMAIN explicitly.",
+      });
+    }
+
+    if (!currentToken) {
+      res.set("Cache-Control", "no-store");
+      return res.status(503).json({
+        error: "gateway_token_unresolved",
+        detail:
+          "Gateway token is not yet resolved. The wrapper may still be starting; retry shortly.",
+      });
+    }
+
+    // Surface the Origin OpenClaw will accept on the bridge's south WS
+    // dial. The bridge MUST send `Origin: <requiredOrigin>` or the
+    // gateway returns CONTROL_UI_ORIGIN_NOT_ALLOWED for webchat-class
+    // clients. Derived from the same domain as `gatewayUrl` so they
+    // always agree.
+    const allowedOrigins = resolveAllowedOrigins(process.env);
+    const requiredOrigin = `wss://${process.env.RAILWAY_PUBLIC_DOMAIN?.trim() || forwardedHost}`
+      .replace(/^wss:/, "https:");
+
+    // SETUP_PASSWORD is the Basic-auth value the wrapper enforces on
+    // proxied routes. The orchestrator already knows it (it injected
+    // the value at provision time); we surface it for symmetry +
+    // operator-tooling parity.
+    const setupPassword = (process.env.SETUP_PASSWORD || "").trim();
+
+    // Stable-across-restarts notifications session key. Persisted to
+    // <STATE_DIR>/notifications-session-key on first call.
+    // See src/lib/notificationsSessionKey.js for the rationale.
+    let notificationsSessionKey;
+    try {
+      notificationsSessionKey = resolveNotificationsSessionKey(STATE_DIR);
+    } catch (err) {
+      res.set("Cache-Control", "no-store");
+      return res.status(500).json({
+        error: "notifications_session_key_unresolved",
+        detail: String(err?.message || err),
+      });
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      gatewayUrl,
+      // Canonical name (aligns with orchestrator `gateway.token`).
+      gatewayToken: currentToken,
+      // Back-compat alias for the previous shape; remove after one
+      // release cycle once consumers move to `gatewayToken`.
+      bootstrapToken: currentToken,
+      setupPassword,
+      notificationsSessionKey,
+      agentId: resolveAgentId({
+        env: process.env,
+        hostname: os.hostname(),
+      }),
+      requiredOrigin,
+      allowedOrigins,
+    });
+  });
+
   router.get("/api/status", requireSetupAuth, async (_req, res) => {
     const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
     const channelsHelp = await runCmd(
@@ -312,16 +422,33 @@ export function createSetupRouter() {
             "true",
           ])
         );
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs([
-            "config",
-            "set",
-            "--json",
-            "gateway.controlUi.dangerouslyDisableDeviceAuth",
-            "true",
-          ])
-        );
+        if (shouldSetDangerousDeviceAuthFlag()) {
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+              "true",
+            ])
+          );
+        } else {
+          // Lock-step with bootstrap.mjs / gateway.js / onboard.js: strip
+          // a stale `true` from any prior deploy so the wizard run honours
+          // the flipped env var. No-op on a fresh openclaw.json.
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "unset",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+            ])
+          );
+          console.log(
+            "[setup/run] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
+          );
+        }
         await runCmd(
           OPENCLAW_NODE,
           clawArgs([
@@ -332,6 +459,24 @@ export function createSetupRouter() {
             JSON.stringify(["127.0.0.1", "::1"]),
           ])
         );
+
+        // Origin allowlist for webchat-class clients (agent-bridge). See
+        // src/lib/allowedOrigins.js for the rationale.
+        {
+          const allowed = resolveAllowedOrigins();
+          if (allowed.length > 0) {
+            await runCmd(
+              OPENCLAW_NODE,
+              clawArgs([
+                "config",
+                "set",
+                "--json",
+                "gateway.controlUi.allowedOrigins",
+                JSON.stringify(allowed),
+              ])
+            );
+          }
+        }
 
         const channelsHelp = await runCmd(
           OPENCLAW_NODE,
