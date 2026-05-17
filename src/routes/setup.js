@@ -36,6 +36,7 @@ import {
 } from "../lib/agentBridgeCreds.js";
 import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
 import { resolveAllowedOrigins } from "../lib/allowedOrigins.js";
+import { resolveNotificationsSessionKey } from "../lib/notificationsSessionKey.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -242,10 +243,36 @@ export function createSetupRouter() {
     const requiredOrigin = `wss://${process.env.RAILWAY_PUBLIC_DOMAIN?.trim() || forwardedHost}`
       .replace(/^wss:/, "https:");
 
+    // SETUP_PASSWORD is the Basic-auth value the wrapper enforces on
+    // proxied routes. The orchestrator already knows it (it injected
+    // the value at provision time); we surface it for symmetry +
+    // operator-tooling parity.
+    const setupPassword = (process.env.SETUP_PASSWORD || "").trim();
+
+    // Stable-across-restarts notifications session key. Persisted to
+    // <STATE_DIR>/notifications-session-key on first call.
+    // See src/lib/notificationsSessionKey.js for the rationale.
+    let notificationsSessionKey;
+    try {
+      notificationsSessionKey = resolveNotificationsSessionKey(STATE_DIR);
+    } catch (err) {
+      res.set("Cache-Control", "no-store");
+      return res.status(500).json({
+        error: "notifications_session_key_unresolved",
+        detail: String(err?.message || err),
+      });
+    }
+
     res.set("Cache-Control", "no-store");
     res.json({
       gatewayUrl,
+      // Canonical name (aligns with orchestrator `gateway.token`).
+      gatewayToken: currentToken,
+      // Back-compat alias for the previous shape; remove after one
+      // release cycle once consumers move to `gatewayToken`.
       bootstrapToken: currentToken,
+      setupPassword,
+      notificationsSessionKey,
       agentId: resolveAgentId({
         env: process.env,
         hostname: os.hostname(),
