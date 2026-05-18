@@ -26,6 +26,18 @@ export const OPENCLAW_ENTRY =
 export const OPENCLAW_NODE =
   process.env.OPENCLAW_NODE?.trim() || "node";
 
+/**
+ * Senpi MCP URL — single source of truth.
+ *
+ * `SENPI_MCP_URL` env var always wins. Default mirrors `railway.toml` so a
+ * Railway deploy with the env var unset (e.g. local docker run) lands on the
+ * same prod endpoint the template ships. Bootstrap, the setup wizard, and any
+ * other call site must import this — never inline the literal again.
+ */
+export const DEFAULT_SENPI_MCP_URL = "https://mcp.prod.senpi.ai/mcp";
+export const SENPI_MCP_URL =
+  process.env.SENPI_MCP_URL?.trim() || DEFAULT_SENPI_MCP_URL;
+
 export const PORT = Number(process.env.PORT?.trim() || "8080");
 
 /** Strip optional "Bearer " prefix from a string. */
