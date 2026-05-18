@@ -29,6 +29,7 @@ import {
 } from "../onboard.js";
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
+import { createIssueBootstrapTokenRoute } from "./issue-bootstrap-token.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -171,6 +172,12 @@ export function createSetupRouter() {
     res.set("Cache-Control", "no-store");
     res.json({ token: gatewayToken });
   });
+
+  // Gated by requireSetupAuth (Basic Auth with SETUP_PASSWORD) like the rest
+  // of the /setup/api/* surface. Mounted as a sub-router so its own handler
+  // is the POST handler; this router mounts at `/api`, child path adds
+  // `/issue-bootstrap-token`.
+  router.use("/api", requireSetupAuth, createIssueBootstrapTokenRoute());
 
   router.get("/api/status", requireSetupAuth, async (_req, res) => {
     const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
