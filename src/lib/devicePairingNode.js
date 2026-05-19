@@ -119,10 +119,21 @@ async function loadDeviceBootstrap() {
  * @param {string} requestId
  * @returns {Promise<object|null>}
  */
+// `callerScopes` is the set of scopes the wrapper claims to hold when
+// approving the pending request. openclaw's `approveDevicePairing`
+// enforces `requestedScopes ⊆ callerScopes` (see
+// openclaw v2026.5.18 `src/infra/device-pairing.ts` `resolveMissingRequestedScope`).
+// The bridge requests BOTH `operator.admin` and `operator.approvals`
+// because chat methods + session-read methods need admin (auto-implies
+// read+write per `src/shared/device-auth.ts`) but
+// `exec.approval.resolve` / `plugin.approval.resolve` require the
+// separate `operator.approvals` scope which is NOT auto-included by
+// admin. Approving with admin alone would silently grant a paired
+// device that can chat but 403s every approval-resolve call.
 export async function approveDeviceLocally(requestId) {
   const mod = await loadDeviceBootstrap();
   return await mod.approveDevicePairing(requestId, {
-    callerScopes: ["operator.admin"],
+    callerScopes: ["operator.admin", "operator.approvals"],
   });
 }
 
