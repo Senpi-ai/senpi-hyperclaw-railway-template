@@ -5,13 +5,65 @@
   var statusEl = document.getElementById('status');
   var authGroupEl = document.getElementById('authGroup');
   var authChoiceEl = document.getElementById('authChoice');
+  var apiUrlWrap = document.getElementById('apiUrlWrap');
+  var apiUrlEl = document.getElementById('apiUrl');
+  var apiUrlHelp = document.getElementById('apiUrlHelp');
+  var modelWrap = document.getElementById('modelWrap');
+  var modelEl = document.getElementById('modelId');
   var logEl = document.getElementById('log');
+
+  // Captured for use in /run payload: the currently active option's full
+  // descriptor (so we can read apiUrl/models server-side too if needed).
+  var currentGroups = [];
 
   function setStatus(s) {
     statusEl.textContent = s;
   }
 
+  function findOption(authChoice) {
+    for (var i = 0; i < currentGroups.length; i++) {
+      var opts = currentGroups[i].options || [];
+      for (var j = 0; j < opts.length; j++) {
+        if (opts[j].value === authChoice) return opts[j];
+      }
+    }
+    return null;
+  }
+
+  function updateExtraFields() {
+    var sel = findOption(authChoiceEl.value);
+    var spec = sel && sel.apiUrl;
+    if (spec) {
+      apiUrlWrap.hidden = false;
+      apiUrlEl.placeholder = spec.placeholder || spec.default || '';
+      if (!apiUrlEl.value) apiUrlEl.value = spec.default || '';
+      apiUrlHelp.textContent = spec.help || '';
+    } else {
+      apiUrlWrap.hidden = true;
+      apiUrlEl.value = '';
+      apiUrlHelp.textContent = '';
+    }
+
+    var models = sel && sel.models;
+    if (models && models.length) {
+      modelWrap.hidden = false;
+      modelEl.innerHTML = '';
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i];
+        var opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label || m.id;
+        modelEl.appendChild(opt);
+      }
+      if (sel.defaultModelId) modelEl.value = sel.defaultModelId;
+    } else {
+      modelWrap.hidden = true;
+      modelEl.innerHTML = '';
+    }
+  }
+
   function renderAuth(groups) {
+    currentGroups = groups || [];
     authGroupEl.innerHTML = '';
     for (var i = 0; i < groups.length; i++) {
       var g = groups[i];
@@ -35,7 +87,10 @@
         opt2.textContent = o.label + (o.hint ? ' - ' + o.hint : '');
         authChoiceEl.appendChild(opt2);
       }
+      updateExtraFields();
     };
+
+    authChoiceEl.onchange = updateExtraFields;
 
     authGroupEl.onchange();
   }
@@ -74,6 +129,8 @@
       flow: document.getElementById('flow').value,
       authChoice: authChoiceEl.value,
       authSecret: document.getElementById('authSecret').value,
+      apiUrl: apiUrlWrap.hidden ? '' : apiUrlEl.value,
+      modelId: modelWrap.hidden ? '' : modelEl.value,
       telegramToken: document.getElementById('telegramToken').value,
       discordToken: document.getElementById('discordToken').value,
       slackBotToken: document.getElementById('slackBotToken').value,

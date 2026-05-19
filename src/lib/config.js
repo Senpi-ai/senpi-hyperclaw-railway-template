@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { buildProviderToAuthChoice } from "./auth-providers.js";
 
 export const STATE_DIR =
   process.env.OPENCLAW_STATE_DIR?.trim() || "/data/.openclaw";
@@ -57,22 +58,22 @@ export const AI_API_KEY = stripBearer(
   process.env.AI_API_KEY?.trim() || ""
 );
 
-/** Map AI_PROVIDER (env) to openclaw --auth-choice value for auto-onboard. */
-export const PROVIDER_TO_AUTH_CHOICE = {
-  anthropic: "apiKey",
-  openai: "openai-api-key",
-  openrouter: "openrouter-api-key",
-  gemini: "gemini-api-key",
-  google: "gemini-api-key",
-  "ai-gateway": "ai-gateway-api-key",
-  moonshot: "moonshot-api-key",
-  "kimi-code": "kimi-code-api-key",
-  zai: "zai-api-key",
-  venice: "venice-api-key",
-  minimax: "minimax-api",
-  synthetic: "synthetic-api-key",
-  "opencode-zen": "opencode-zen",
-};
+/**
+ * LiteLLM proxy config. Used when AI_PROVIDER=litellm:
+ *   - LITELLM_BASE_URL → openclaw.json models.providers.litellm.baseUrl
+ *   - LITELLM_MODEL    → model id (sans `litellm/` prefix) honored in bootstrap
+ */
+export const LITELLM_BASE_URL =
+  process.env.LITELLM_BASE_URL?.trim() || "http://litellm.dev.senpi.ai/v1";
+export const LITELLM_MODEL =
+  process.env.LITELLM_MODEL?.trim() || "vertex_ai/gemini";
+
+/**
+ * Map AI_PROVIDER (env) to openclaw --auth-choice value for auto-onboard.
+ * Sourced from the single-source-of-truth provider registry in auth-providers.js,
+ * so adding a new provider there automatically extends this map.
+ */
+export const PROVIDER_TO_AUTH_CHOICE = buildProviderToAuthChoice();
 
 /** Providers that use ADC/OAuth instead of an API key (AI_API_KEY not required). */
 export const PROVIDERS_WITHOUT_API_KEY = new Set([]);
@@ -97,6 +98,7 @@ const PROVIDER_API_KEY_ENV = {
   minimax: "MINIMAX_API_KEY",
   synthetic: "SYNTHETIC_API_KEY",
   "opencode-zen": "OPENCODE_API_KEY",
+  litellm: "LITELLM_API_KEY",
 };
 
 /**

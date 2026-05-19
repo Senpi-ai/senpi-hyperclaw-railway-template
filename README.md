@@ -62,6 +62,7 @@ Set `AI_PROVIDER` to one of the following values, and put the corresponding API 
 | `minimax` | MiniMax (M2.1) | MiniMax API key |
 | `synthetic` | Synthetic (Anthropic-compatible) | Synthetic API key |
 | `opencode-zen` | OpenCode Zen (multi-model proxy) | OpenCode Zen API key |
+| `litellm` | LiteLLM proxy (Vertex AI, DeepSeek, Kimi, GLM, …) | LiteLLM bearer token |
 
 **Example** (Anthropic):
 
@@ -69,6 +70,18 @@ Set `AI_PROVIDER` to one of the following values, and put the corresponding API 
 AI_PROVIDER=anthropic
 AI_API_KEY=sk-ant-your-key-here
 ```
+
+### LiteLLM provider
+
+When `AI_PROVIDER=litellm`, the wrapper writes a provider entry to `openclaw.json` so the agent can route through a LiteLLM proxy. Configure with:
+
+| Env var | Required | Default | Purpose |
+|---|---|---|---|
+| `AI_API_KEY` (or `LITELLM_API_KEY`) | Yes | — | Bearer token sent to the LiteLLM proxy |
+| `LITELLM_BASE_URL` | No | `http://litellm.dev.senpi.ai/v1` | OpenAI-compatible `/v1` endpoint on the proxy |
+| `LITELLM_MODEL` | No | `vertex_ai/gemini` | Model id (without the `litellm/` prefix). Available: `vertex_ai/gemini`, `vertex_ai/claude`, `vertex_ai/qwen`, `qwen3.6-35b-a3b`, `deepseek-v4-flash`, `deepseek-v4-pro`, `kimi-k2.6`, `llama-4-maverick`, `glm-5.1`, `minimax-m2.5`, `ministral-14b`, `gemma-4-31b-it` |
+
+Changing `LITELLM_MODEL` on a redeploy will re-onboard automatically (the env fingerprint includes LiteLLM keys when LiteLLM is the selected provider).
 
 ## Getting a Telegram bot token
 

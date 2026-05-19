@@ -32,6 +32,17 @@
     <label>Key / Token (if required)</label>
     <input id="authSecret" type="password" placeholder="Paste API key / token if applicable" />
 
+    <div id="apiUrlWrap" hidden>
+      <label>API base URL</label>
+      <input id="apiUrl" type="url" placeholder="" />
+      <div id="apiUrlHelp" class="muted" style="margin-top: 0.25rem"></div>
+    </div>
+
+    <div id="modelWrap" hidden>
+      <label>Model</label>
+      <select id="modelId"></select>
+    </div>
+
     <label>Wizard flow</label>
     <select id="flow">
       <option value="quickstart">quickstart</option>

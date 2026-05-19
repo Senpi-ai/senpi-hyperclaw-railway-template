@@ -13,6 +13,8 @@ import {
   TELEGRAM_USERNAME,
   AI_PROVIDER,
   AI_API_KEY,
+  LITELLM_BASE_URL,
+  LITELLM_MODEL,
   configPath,
   isConfigured,
   PROVIDER_TO_AUTH_CHOICE,
@@ -28,6 +30,7 @@ import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
+import { findAuthOption } from "./lib/auth-providers.js";
 
 const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
   STATE_DIR,
@@ -48,6 +51,12 @@ export function envFingerprintForOnboard() {
     TELEGRAM_USERNAME,
     SENPI_AUTH_TOKEN: process.env.SENPI_AUTH_TOKEN?.trim() || "",
   };
+  // Only include LiteLLM-specific keys when actually using LiteLLM, so
+  // non-LiteLLM deployments don't see a fingerprint change on upgrade.
+  if (AI_PROVIDER === "litellm") {
+    payload.LITELLM_BASE_URL = LITELLM_BASE_URL;
+    payload.LITELLM_MODEL = LITELLM_MODEL;
+  }
   return crypto
     .createHash("sha256")
     .update(JSON.stringify(payload), "utf8")
@@ -312,23 +321,8 @@ export function buildOnboardArgs(payload, gatewayToken) {
     args.push("--auth-choice", payload.authChoice);
 
     const secret = (payload.authSecret || "").trim();
-    const map = {
-      "openai-api-key": "--openai-api-key",
-      apiKey: "--anthropic-api-key",
-      "openrouter-api-key": "--openrouter-api-key",
-      "ai-gateway-api-key": "--ai-gateway-api-key",
-      "moonshot-api-key": "--moonshot-api-key",
-      "kimi-code-api-key": "--kimi-code-api-key",
-      "gemini-api-key": "--gemini-api-key",
-      "zai-api-key": "--zai-api-key",
-      "venice-api-key": "--venice-api-key",
-      "minimax-api": "--minimax-api-key",
-      "minimax-api-lightning": "--minimax-api-key",
-      "synthetic-api-key": "--synthetic-api-key",
-      "opencode-zen": "--opencode-zen-api-key",
-      "venice-api-key": "--venice-api-key",
-    };
-    const flag = map[payload.authChoice];
+    const optionRef = findAuthOption(payload.authChoice);
+    const flag = optionRef?.option?.onboardFlag;
     if (flag && secret) {
       args.push(flag, secret);
     }
@@ -339,6 +333,95 @@ export function buildOnboardArgs(payload, gatewayToken) {
   }
 
   return args;
+}
+
+/**
+ * Write provider-specific config after onboarding (base URL, model catalog,
+ * primary model). Invoked by both interactive setup and auto-onboard so
+ * LiteLLM / similar providers end up identically configured.
+ *
+ * Currently only handles LiteLLM (the only provider whose option carries
+ * apiUrl + models). Other providers no-op.
+ *
+ * @param {string} authChoice - the selected auth option (e.g. "litellm-api-key")
+ * @param {{ apiUrl?: string, modelId?: string }} payload - wizard values; LITELLM_BASE_URL/LITELLM_MODEL env vars are used as fallbacks for auto-onboard
+ * @returns {Promise<string>} log text appended to setup output
+ */
+export async function applyProviderPostOnboardConfig(authChoice, payload = {}) {
+  const found = findAuthOption(authChoice);
+  if (!found) return "";
+
+  const { option } = found;
+  let log = "";
+
+  const providerId =
+    option.value === "litellm-api-key" ? "litellm" : null;
+  if (!providerId) return "";
+
+  if (option.apiUrl) {
+    const baseUrl =
+      (typeof payload.apiUrl === "string" && payload.apiUrl.trim()) ||
+      (providerId === "litellm" ? LITELLM_BASE_URL : "") ||
+      option.apiUrl.default ||
+      "";
+    if (baseUrl) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", `models.providers.${providerId}.baseUrl`, baseUrl])
+      );
+      log += `\n[${providerId}] set baseUrl=${baseUrl} (exit=${r.code})\n`;
+    }
+  }
+
+  if (Array.isArray(option.models) && option.models.length > 0) {
+    const modelDefs = option.models.map((m) => ({
+      id: m.id,
+      name: m.label || m.id,
+      reasoning: !!m.reasoning,
+      input: Array.isArray(m.input) && m.input.length > 0 ? m.input : ["text"],
+      contextWindow: m.contextWindow || 128000,
+      maxTokens: m.maxTokens || 8192,
+    }));
+    const rm = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        `models.providers.${providerId}.models`,
+        JSON.stringify(modelDefs),
+      ])
+    );
+    log += `\n[${providerId}] set models (count=${modelDefs.length}, exit=${rm.code})\n`;
+
+    const ra = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", `models.providers.${providerId}.api`, "openai-completions"])
+    );
+    log += `\n[${providerId}] set api=openai-completions (exit=${ra.code})\n`;
+  }
+
+  let requestedModelId =
+    (typeof payload.modelId === "string" && payload.modelId.trim()) ||
+    (providerId === "litellm" ? LITELLM_MODEL : "") ||
+    option.defaultModelId;
+  if (Array.isArray(option.models) && requestedModelId) {
+    const known = option.models.some((m) => m.id === requestedModelId);
+    if (!known) {
+      log += `\n[${providerId}] requested model '${requestedModelId}' not in allowlist; using first known model\n`;
+      requestedModelId = option.models[0].id;
+    }
+  }
+  if (requestedModelId) {
+    const modelRef = `${providerId}/${requestedModelId}`;
+    const rp = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "agents.defaults.model.primary", modelRef])
+    );
+    log += `\n[${providerId}] set primary model=${modelRef} (exit=${rp.code})\n`;
+  }
+
+  return log;
 }
 
 /**
@@ -526,6 +609,15 @@ console.log(`[auto-onboard] directory created`);
           ])
         );
       }
+    }
+
+    // Provider-specific post-onboard wiring (LiteLLM baseUrl, model catalog,
+    // primary model). No-op for providers without an `apiUrl` spec.
+    try {
+      const providerLog = await applyProviderPostOnboardConfig(authChoice);
+      if (providerLog) console.log(`[auto-onboard]${providerLog}`);
+    } catch (err) {
+      console.warn(`[auto-onboard] provider post-config failed: ${err}`);
     }
 
     if (TELEGRAM_BOT_TOKEN) {

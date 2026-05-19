@@ -27,7 +27,12 @@ import {
   buildOnboardArgs,
   resolveTelegramAndWriteUserMd,
   isOnboardingInProgress,
+  applyProviderPostOnboardConfig,
 } from "../onboard.js";
+import {
+  buildAuthGroupsForUi,
+  findAuthOption,
+} from "../lib/auth-providers.js";
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
 import os from "node:os";
@@ -41,121 +46,6 @@ import { resolveNotificationsSessionKey } from "../lib/notificationsSessionKey.j
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
-
-const AUTH_GROUPS = [
-  {
-    value: "openai",
-    label: "OpenAI",
-    hint: "Codex OAuth + API key",
-    options: [
-      { value: "codex-cli", label: "OpenAI Codex OAuth (Codex CLI)" },
-      { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" },
-      { value: "openai-api-key", label: "OpenAI API key" },
-    ],
-  },
-  {
-    value: "anthropic",
-    label: "Anthropic",
-    hint: "Claude Code CLI + API key",
-    options: [
-      { value: "claude-cli", label: "Anthropic token (Claude Code CLI)" },
-      { value: "token", label: "Anthropic token (paste setup-token)" },
-      { value: "apiKey", label: "Anthropic API key" },
-    ],
-  },
-  {
-    value: "google",
-    label: "Google",
-    hint: "Gemini API key + Vertex AI + OAuth",
-    options: [
-      { value: "gemini-api-key", label: "Google Gemini API key" },
-      { value: "google-antigravity", label: "Google Antigravity OAuth" },
-      { value: "google-gemini-cli", label: "Google Gemini CLI OAuth" },
-    ],
-  },
-  {
-    value: "openrouter",
-    label: "OpenRouter",
-    hint: "API key",
-    options: [{ value: "openrouter-api-key", label: "OpenRouter API key" }],
-  },
-  {
-    value: "ai-gateway",
-    label: "Vercel AI Gateway",
-    hint: "API key",
-    options: [
-      { value: "ai-gateway-api-key", label: "Vercel AI Gateway API key" },
-    ],
-  },
-  {
-    value: "moonshot",
-    label: "Moonshot AI",
-    hint: "Kimi K2 + Kimi Code",
-    options: [
-      { value: "moonshot-api-key", label: "Moonshot AI API key" },
-      { value: "kimi-code-api-key", label: "Kimi Code API key" },
-    ],
-  },
-  {
-    value: "zai",
-    label: "Z.AI (GLM 4.7)",
-    hint: "API key",
-    options: [{ value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }],
-  },
-  {
-    value: "minimax",
-    label: "MiniMax",
-    hint: "M2.1 (recommended)",
-    options: [
-      { value: "minimax-api", label: "MiniMax M2.1" },
-      { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning" },
-    ],
-  },
-  {
-    value: "qwen",
-    label: "Qwen",
-    hint: "OAuth",
-    options: [{ value: "qwen-portal", label: "Qwen OAuth" }],
-  },
-  {
-    value: "copilot",
-    label: "Copilot",
-    hint: "GitHub + local proxy",
-    options: [
-      { value: "github-copilot", label: "GitHub Copilot (GitHub device login)" },
-      { value: "copilot-proxy", label: "Copilot Proxy (local)" },
-    ],
-  },
-  {
-    value: "venice",
-    label: "Venice AI",
-    hint: "Private & uncensored models",
-    options: [{ value: "venice-api-key", label: "Venice AI API key" }],
-  },
-  {
-    value: "synthetic",
-    label: "Synthetic",
-    hint: "Anthropic-compatible (multi-model)",
-    options: [{ value: "synthetic-api-key", label: "Synthetic API key" }],
-  },
-  {
-    value: "opencode-zen",
-    label: "OpenCode Zen",
-    hint: "API key",
-    options: [
-      {
-        value: "opencode-zen",
-        label: "OpenCode Zen (multi-model proxy)",
-      },
-    ],
-  },
-  {
-    value: "venice",
-    label: "Venice AI",
-    hint: "Privacy-focused API key",
-    options: [{ value: "venice-api-key", label: "Venice AI API key" }],
-  },
-];
 
 export function createSetupRouter() {
   const router = express.Router();
@@ -294,7 +184,7 @@ export function createSetupRouter() {
       gatewayTarget: GATEWAY_TARGET,
       openclawVersion: version.output.trim(),
       channelsAddHelp: channelsHelp.output,
-      authGroups: AUTH_GROUPS,
+      authGroups: buildAuthGroupsForUi(),
     });
   });
 
@@ -321,6 +211,23 @@ export function createSetupRouter() {
       fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
       const payload = req.body || {};
+
+      // For providers that require an apiUrl (e.g. LiteLLM), reject submissions
+      // missing the field so we don't proceed with a half-configured provider.
+      if (payload.authChoice) {
+        const found = findAuthOption(payload.authChoice);
+        const apiUrlSpec = found?.option?.apiUrl;
+        if (apiUrlSpec?.required) {
+          const provided = (payload.apiUrl || "").trim();
+          if (!provided && !apiUrlSpec.default) {
+            return res.status(400).json({
+              ok: false,
+              output: `[setup] '${payload.authChoice}' requires an API base URL.`,
+            });
+          }
+        }
+      }
+
       const onboardArgs = buildOnboardArgs(payload, gatewayToken);
 
       console.log(`[onboard] ========== TOKEN DIAGNOSTIC START ==========`);
@@ -587,6 +494,19 @@ export function createSetupRouter() {
             );
             extra += `\n[slack config] exit=${set.code}\n`;
           }
+        }
+
+        // Provider-specific post-onboard wiring (LiteLLM baseUrl, model
+        // catalog, primary model). No-op for providers that don't carry an
+        // apiUrl spec in auth-providers.js.
+        try {
+          const providerLog = await applyProviderPostOnboardConfig(
+            payload.authChoice,
+            { apiUrl: payload.apiUrl, modelId: payload.modelId }
+          );
+          if (providerLog) extra += providerLog;
+        } catch (err) {
+          extra += `\n[provider-config] failed: ${String(err)}\n`;
         }
 
         await resolveTelegramAndWriteUserMd();

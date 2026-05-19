@@ -149,6 +149,20 @@ export const DESIRED_MODELS = {
   // ── Amazon Bedrock ──
   "amazon-bedrock/anthropic.claude-opus-4-6": { alias: "Opus 4.6 (Bedrock)" },
   "amazon-bedrock/anthropic.claude-sonnet-4-6": { alias: "Sonnet 4.6 (Bedrock)" },
+
+  // ── LiteLLM (Vertex AI via Senpi proxy) ──
+  "litellm/vertex_ai/gemini":  { alias: "Vertex Gemini (LiteLLM)" },
+  "litellm/vertex_ai/claude":  { alias: "Vertex Claude (LiteLLM)" },
+  "litellm/vertex_ai/qwen":    { alias: "Vertex Qwen (LiteLLM)" },
+  "litellm/deepseek-v4-flash": { alias: "DeepSeek V4 Flash (LiteLLM)" },
+  "litellm/deepseek-v4-pro":   { alias: "DeepSeek V4 Pro (LiteLLM)" },
+  "litellm/qwen3.6-35b-a3b":   { alias: "Qwen3.6 35B A3B (LiteLLM)" },
+  "litellm/kimi-k2.6":         { alias: "Kimi K2.6 (LiteLLM)" },
+  "litellm/llama-4-maverick":  { alias: "Llama 4 Maverick (LiteLLM)" },
+  "litellm/glm-5.1":           { alias: "GLM 5.1 (LiteLLM)" },
+  "litellm/minimax-m2.5":      { alias: "MiniMax M2.5 (LiteLLM)" },
+  "litellm/ministral-14b":     { alias: "Ministral 14B (LiteLLM)" },
+  "litellm/gemma-4-31b-it":    { alias: "Gemma 4 31B (LiteLLM)" },
 };
 
 /**
@@ -167,6 +181,7 @@ export const PROVIDER_DEFAULTS = [
   { key: "MOONSHOT_API_KEY", model: "moonshot/kimi-k2.5" },
   { key: "VENICE_API_KEY", model: "venice/llama-3.3-70b" },
   { key: "OPENROUTER_API_KEY", model: "openrouter/anthropic/claude-sonnet-4-5" },
+  { key: "LITELLM_API_KEY", model: "litellm/vertex_ai/gemini" },
 ];
 
 /**
@@ -184,4 +199,5 @@ export const AI_PROVIDER_MODEL_MAP = {
   venice: "venice/llama-3.3-70b",
   mistral: "mistral/mistral-large-latest",
   minimax: "minimax/MiniMax-M2.1",
+  litellm: "litellm/vertex_ai/gemini",
 };
