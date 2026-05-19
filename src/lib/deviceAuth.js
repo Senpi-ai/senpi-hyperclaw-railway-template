@@ -154,10 +154,26 @@ export function isLoopbackOperatorRequest(req) {
 // exists to (a) keep the auto-approval narrow to the user-role chat path,
 // and (b) make the threat model legible in CLAUDE.md Quirk #14.
 
+// Default scopes the bridge requests at handshake. Must intersect with
+// (be a subset of) the wrapper's auto-approval allowlist for
+// `isAgentBridgeRequest` to admit the pairing. Verified against openclaw
+// v2026.5.18 `src/gateway/operator-scopes.ts` (the only valid operator
+// scopes) + `src/gateway/methods/core-descriptors.ts` (method → scope
+// mapping). The bridge invokes:
+//   chat.send/abort                    → operator.write  (auto-included by admin)
+//   chat.history, sessions.{list,get,
+//     preview,messages.subscribe/-}    → operator.read   (auto-included by admin)
+//   exec.approval.resolve              → operator.approvals (NOT auto-included)
+//   plugin.approval.resolve            → operator.approvals (NOT auto-included)
+// So we need BOTH admin AND approvals on the device — admin alone leaves
+// the entire approval-resolve path 403'ing at openclaw. The previous
+// default `["chat"]` did not match any real openclaw scope; this restores
+// the alignment with the bridge's defaults in
+// agent-bridge `internal/server/orchestrator.go`.
 const DEFAULT_BRIDGE_CONFIG = Object.freeze({
   clientIds: Object.freeze(["webchat-ui", "senpi-mobile", "senpi-web"]),
   clientModes: Object.freeze(["webchat"]),
-  scopes: Object.freeze(["chat"]),
+  scopes: Object.freeze(["operator.admin", "operator.approvals"]),
 });
 
 function csvOrDefault(value, fallback) {
