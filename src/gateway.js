@@ -23,8 +23,8 @@ import {
   startAutoApprovalLoop,
   stopAutoApprovalLoop,
 } from "./lib/deviceAuth.js";
-
-const MCPORTER_CONFIG = path.join(STATE_DIR, "config", "mcporter.json");
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
@@ -93,24 +93,6 @@ function clearAllSessions() {
     }
   } catch (err) {
     console.warn(`[gateway] clearAllSessions: ${err.message}`);
-  }
-}
-
-/** Fire-and-forget MCP connectivity check after gateway is ready. */
-async function checkMcpHealth() {
-  try {
-    const { code, output } = await runCmd("mcporter", [
-      "call", "senpi.user_get_me",
-      "--config", MCPORTER_CONFIG,
-      "--output", "json",
-    ]);
-    if (code === 0) {
-      console.log("[gateway] MCP health check: OK");
-    } else {
-      console.warn(`[gateway] MCP health check: FAIL (exit ${code}) ${output?.slice(0, 200) ?? ""}`);
-    }
-  } catch (err) {
-    console.warn(`[gateway] MCP health check: FAIL (${err.message})`);
   }
 }
 
@@ -220,24 +202,66 @@ export async function startGateway(gatewayToken) {
       "true",
     ])
   );
-  await runCmd(
-    OPENCLAW_NODE,
-    clawArgs([
-      "config",
-      "set",
-      "--json",
-      "gateway.controlUi.dangerouslyDisableDeviceAuth",
-      "true",
-    ])
-  );
+  const setDangerousFlag = shouldSetDangerousDeviceAuthFlag();
+  if (setDangerousFlag) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        "true",
+      ])
+    );
+  } else {
+    // Hatch: operator opted out via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false.
+    // Strip any pre-existing setting so a redeploy that flips the var actually
+    // takes effect — otherwise the previous `true` would persist in openclaw.json.
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "unset",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+      ])
+    );
+  }
+  // Origin allowlist (gateway.controlUi.allowedOrigins) — required for the
+  // bridge's webchat-class connect to pass OpenClaw v2026.5.x's origin
+  // check. Re-resolved on every gateway start so a redeploy with a new
+  // RAILWAY_PUBLIC_DOMAIN or AGENT_BRIDGE_ALLOWED_ORIGINS picks up.
+  const allowed = resolveAllowedOrigins();
+  if (allowed.length > 0) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        "gateway.controlUi.allowedOrigins",
+        JSON.stringify(allowed),
+      ])
+    );
+  }
+
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
-  console.log(
-    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
-  );
-  if (devAuth !== true) {
-    console.warn(
-      `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+  if (setDangerousFlag) {
+    console.log(
+      `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
+    );
+    if (devAuth !== true) {
+      console.warn(
+        `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+      );
+    }
+  } else {
+    // Default since 2026-05-16: flag is intentionally omitted. Set
+    // OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in
+    // (see CLAUDE.md Quirk #15).
+    console.log(
+      `[gateway] dangerouslyDisableDeviceAuth omitted (default); verified: ${devAuth === undefined ? "absent" : devAuth}`
     );
   }
 
@@ -321,7 +345,6 @@ export async function ensureGatewayRunning(gatewayToken) {
         throw new Error("Gateway did not become ready in time");
       }
       startAutoApprovalLoop();
-      checkMcpHealth();
     })().finally(() => {
       gatewayStarting = null;
     });

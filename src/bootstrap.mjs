@@ -7,21 +7,16 @@ import {
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
-import { TELEGRAM_USERNAME } from "./lib/config.js";
+import { TELEGRAM_USERNAME, SENPI_MCP_URL } from "./lib/config.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
 
-// Config path — MCPORTER_CONFIG is set as a Railway env var so every process
-// in the container (wrapper, gateway, agent, tools) can find it.
-const MCPORTER_PATH =
-  process.env.MCPORTER_CONFIG ||
-  path.join(STATE_DIR, "config", "mcporter.json");
-
-/** Persisted Senpi token so plugin and MCP can be configured independently (env or file). */
+/** Persisted Senpi token so the runtime plugin can pick it up if env is unset. */
 const SENPI_TOKEN_FILE = path.join(STATE_DIR, "config", "senpi.token");
 
-const IMAGE_SKILLS_DIR = "/opt/openclaw-skills";
 const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
 
 /**
@@ -30,7 +25,23 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
  * npm install spec stays scoped.
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi-ai/runtime";
+// `integration/openclaw-v2026.5.7-full` interim branch installs from the DEV
+// npm channel (`@senpi/runtime`) while we ship openclaw-2026.5.x compatibility
+// fixes that haven't reached the prod channel (`@senpi-ai/runtime`) yet. The
+// plugin's `resolvePackageName()` (see senpi-trading-runtime/runtime/auto-update/)
+// introspects this so auto-update follows the same npm channel — no flip-flop
+// with the prod line. Revert to `@senpi-ai/runtime` at cutover when the
+// upgrade work merges to wrapper main and the prod plugin ships the matching
+// patches (resolvePackageName + manifest commandAliases/activation).
+//
+// Two constants, because OpenClaw v2026.5.x refuses to install a prerelease
+// without an explicit dist-tag — versions on this dev channel carry a
+// `-dev.<branch>.<ts>` suffix, so we ask for `@senpi/runtime@beta` (the
+// dist-tag the openclaw-upgrade/main publish-dev job tags as). The package
+// still lands on disk under its npm name, so the path probe needs the bare
+// name (without `@beta`) to find the install directory.
+const SENPI_RUNTIME_NPM_NAME = "@senpi/runtime";
+const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime@beta";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -53,12 +64,7 @@ function exists(p) {
   }
 }
 
-/**
- * Resolve Senpi token: env first, then persisted file, then mcporter.json for backward compat.
- * MCP is the older feature (token was only in mcporter.json); plugin is newer. We don't assume
- * both are present — so canonical store is senpi.token. If we find token in mcporter.json only,
- * we migrate it to senpi.token so future runs don't depend on MCP config.
- */
+/** Resolve Senpi token: env first, then persisted file. */
 function resolveSenpiToken() {
   const fromEnv = process.env.SENPI_AUTH_TOKEN?.trim();
   if (fromEnv) return fromEnv;
@@ -66,34 +72,10 @@ function resolveSenpiToken() {
     try {
       return fs.readFileSync(SENPI_TOKEN_FILE, "utf8").trim();
     } catch {
-      // fall through to backward-compat
-    }
-  }
-  // Backward compat: existing installs may have token only in mcporter.json (MCP-only setup)
-  if (exists(MCPORTER_PATH)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(MCPORTER_PATH, "utf8"));
-      const token = config?.mcpServers?.senpi?.env?.SENPI_AUTH_TOKEN;
-      const fromMcp = typeof token === "string" ? token.trim() : "";
-      if (fromMcp) {
-        ensureDir(path.dirname(SENPI_TOKEN_FILE));
-        fs.writeFileSync(SENPI_TOKEN_FILE, fromMcp);
-        console.log("[bootstrap] Migrated Senpi token from mcporter.json to config/senpi.token");
-        return fromMcp;
-      }
-    } catch {
       // ignore
     }
   }
   return "";
-}
-
-// Recursive copy (Node 22 supports fs.cpSync)
-function copyDirIfMissing(srcDir, dstDir) {
-  if (!exists(srcDir)) return;
-  if (exists(dstDir)) return;
-  ensureDir(path.dirname(dstDir));
-  fs.cpSync(srcDir, dstDir, { recursive: true });
 }
 
 /** When missing, OpenClaw may not expose llm-task/message for the main agent. */
@@ -155,8 +137,8 @@ function patchOpenClawJson() {
         thinkingDefault: "off",
       },
     },
-    // Headless Railway deployment: disable exec approval prompts so mcporter (MCP)
-    // and other tool calls don't stall waiting for manual approval.
+    // Headless Railway deployment: disable exec approval prompts so MCP and
+    // other tool calls don't stall waiting for manual approval.
     // See: https://docs.openclaw.ai/tools/exec
     // Note: tools.fs (workspaceOnly) is only supported in newer OpenClaw; omitted for 2026.2.12 compatibility.
     tools: {
@@ -164,13 +146,27 @@ function patchOpenClawJson() {
         security: "full",
         ask: "off",
       },
+      sessions: {
+        visibility: "all",
+      },
     },
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
         // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
         // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
-        dangerouslyDisableDeviceAuth: true,
+        // Hatch: set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false to omit the
+        // flag (only safe when remote Control UI access isn't needed — see Quirk #7).
+        ...(shouldSetDangerousDeviceAuthFlag()
+          ? { dangerouslyDisableDeviceAuth: true }
+          : {}),
+        // OpenClaw v2026.5.x rejects webchat-class connections (including the
+        // agent-bridge in Senpi-ai/agent-bridge `v3/go-rewrite`) with
+        // CONTROL_UI_ORIGIN_NOT_ALLOWED unless the client's Origin header is
+        // listed here. Default includes the Railway public domain + localhost
+        // dev fallbacks; AGENT_BRIDGE_ALLOWED_ORIGINS adds more (CSV, `*`
+        // accepted as wildcard).
+        allowedOrigins: resolveAllowedOrigins(),
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],
@@ -339,51 +335,46 @@ function patchOpenClawJson() {
   }
 }
 
-function writeMcporterConfig() {
-  ensureDir(path.dirname(MCPORTER_PATH));
+/**
+ * Configure the Senpi MCP server via `openclaw mcp set` (streamable-HTTP transport
+ * with bearer auth). Replaces the legacy mcporter / mcp-remote subprocess fan-out:
+ * one persistent HTTP/2 connection per gateway instead of a 6-process tree
+ * (gateway → sh → python → node mcporter → npm exec → sh → node mcp-remote) per
+ * tool call. Requires openclaw.json (post-onboard); skipped otherwise.
+ */
+function setupSenpiMcp() {
+  const cfgPath = path.join(STATE_DIR, "openclaw.json");
+  if (!exists(cfgPath)) return;
 
-  const mcpUrl = process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+  const mcpUrl = SENPI_MCP_URL;
   const senpiToken = resolveSenpiToken();
 
-  // The senpi server entry we always want present
-  const senpiEntry = {
-    command: "npx",
-    args: [
-      "mcp-remote",
-      mcpUrl,
-      "--header",
-      "Authorization: Bearer ${SENPI_AUTH_TOKEN}",
-    ],
-    env: {
-      SENPI_AUTH_TOKEN: senpiToken,
-    },
-  };
-
-  let config;
-  if (exists(MCPORTER_PATH)) {
-    // Smart merge: preserve any servers/settings the agent may have added
-    try {
-      config = JSON.parse(fs.readFileSync(MCPORTER_PATH, "utf8"));
-      if (!config.mcpServers || typeof config.mcpServers !== "object") {
-        config.mcpServers = {};
-      }
-    } catch {
-      config = { mcpServers: {}, imports: [] };
-    }
-  } else {
-    config = { mcpServers: {}, imports: [] };
+  if (!senpiToken) {
+    console.log(
+      "[bootstrap] SENPI_AUTH_TOKEN is blank — Senpi MCP not configured (set it in Variables to enable)."
+    );
+    return;
   }
 
-  // When token is blank, remove Senpi so the gateway doesn't try to connect (avoids auth failures / health check issues).
-  // When token is set, upsert the senpi server.
-  if (senpiToken) {
-    config.mcpServers.senpi = senpiEntry;
-  } else {
-    delete config.mcpServers.senpi;
-    console.log("[bootstrap] SENPI_AUTH_TOKEN is blank — Senpi MCP not configured (set it in Variables to enable).");
-  }
+  const senpiConfig = JSON.stringify({
+    url: mcpUrl,
+    transport: "streamable-http",
+    headers: { Authorization: `Bearer ${senpiToken}` },
+  });
 
-  fs.writeFileSync(MCPORTER_PATH, JSON.stringify(config, null, 2));
+  const result = spawnSync("openclaw", ["mcp", "set", "senpi", senpiConfig], {
+    env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
+    stdio: "pipe",
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    console.error(
+      "[bootstrap] openclaw mcp set senpi failed:",
+      result.stderr || result.stdout
+    );
+    return;
+  }
+  console.log(`[bootstrap] Senpi MCP configured (url: ${mcpUrl})`);
 }
 
 /**
@@ -463,7 +454,7 @@ function installSenpiRuntimePluginIfNeeded() {
   //   - 2026.5.x (managed npm):  STATE_DIR/npm/node_modules/@senpi-ai/runtime
   //   - 2026.2.x (legacy extensions): STATE_DIR/extensions/runtime
   // The first one that exists tells us the plugin is already installed.
-  const managedPluginDir = path.join(STATE_DIR, "npm", "node_modules", SENPI_RUNTIME_NPM_SPEC);
+  const managedPluginDir = path.join(STATE_DIR, "npm", "node_modules", SENPI_RUNTIME_NPM_NAME);
   const legacyPluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
   const pluginDir = exists(managedPluginDir) ? managedPluginDir : legacyPluginDir;
 
@@ -498,13 +489,18 @@ function installSenpiRuntimePluginIfNeeded() {
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
-  // OpenClaw 2026.5.x added a static-analysis install gate that flags any
-  // child_process use. The Senpi runtime legitimately spawns processes for
-  // the auto-updater and its CLI surface; pass --dangerously-force-unsafe-install
-  // so the trusted, first-party plugin installs through.
+  // OpenClaw 2026.5.x's install gate (skill-scanner.ts dangerous-exec rule)
+  // flags any plugin file whose compiled JS contains both a spawn/exec call
+  // site AND the literal "child_process" in the same file. We used to pass
+  // --dangerously-force-unsafe-install here to bypass the gate. As of
+  // @senpi/runtime 1.2.0-dev (after the safe-spawn refactor — see the
+  // plugin's src/utils/safe-spawn.ts) the gate no longer matches, so the
+  // bypass flag is gone. Leaving it OFF here also surfaces any future
+  // regression: if a future plugin version reintroduces the literal,
+  // install fails loudly instead of silently bypassing.
   const result = spawnSync(
     "openclaw",
-    ["plugins", "install", "--dangerously-force-unsafe-install", SENPI_RUNTIME_NPM_SPEC],
+    ["plugins", "install", SENPI_RUNTIME_NPM_SPEC],
     {
       env: { ...process.env, OPENCLAW_STATE_DIR: STATE_DIR },
       stdio: "pipe",
@@ -600,17 +596,12 @@ export function bootstrapOpenClaw() {
   // Ensure memory/ directory exists (daily memory logs)
   ensureDir(path.join(WORKSPACE_DIR, "memory"));
 
-  // Copy mcporter skill into persisted state (so OpenClaw loads it naturally)
   ensureDir(STATE_SKILLS_DIR);
-  copyDirIfMissing(
-    path.join(IMAGE_SKILLS_DIR, "mcporter"),
-    path.join(STATE_SKILLS_DIR, "mcporter"),
-  );
 
   ensureSenpiStateFile();
-  writeMcporterConfig();
   seedWorkspaceFiles();
   installSenpiRuntimePluginIfNeeded();
   installSenpiTradingRuntimeSkillIfNeeded();
   patchOpenClawJson();
+  setupSenpiMcp();
 }

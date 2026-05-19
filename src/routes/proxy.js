@@ -12,8 +12,14 @@ import {
 import { tokenLogSafe, secureCompare, createCheckProxyAuth } from "../lib/auth.js";
 import { ensureGatewayRunning } from "../gateway.js";
 import { isOnboardingInProgress } from "../onboard.js";
+import {
+  isAgentBridgeUpgradePath,
+  resolveAgentBridgeWsPath,
+} from "../lib/proxyPaths.js";
 
-const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+function getGatewayToken() {
+  return process.env.OPENCLAW_GATEWAY_TOKEN || "";
+}
 const checkProxyAuth = createCheckProxyAuth(SETUP_PASSWORD);
 
 function debug(...args) {
@@ -31,16 +37,28 @@ proxy.on("error", (err, _req, _res) => {
 });
 
 proxy.on("proxyReq", (proxyReq, req, res) => {
+  const token = getGatewayToken();
   console.log(
-    `[proxy] HTTP ${req.method} ${req.url} - injecting token (fingerprint: ${tokenLogSafe(gatewayToken)})`
+    `[proxy] HTTP ${req.method} ${req.url} - injecting token (fingerprint: ${tokenLogSafe(token)}, len: ${token.length})`
   );
-  proxyReq.setHeader("Authorization", `Bearer ${gatewayToken}`);
+  proxyReq.setHeader("Authorization", `Bearer ${token}`);
 });
 
 proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
-  proxyReq.setHeader("Authorization", `Bearer ${gatewayToken}`);
+  // Agent-bridge upgrades carry their own auth in the v3 connect payload
+  // (`auth.token`) — see Senpi-ai/agent-bridge `internal/openclaw/handshake.go`.
+  // Injecting a wrapper Authorization header here would crowd it out and
+  // confuse OpenClaw's auth-method resolution. The `__agentBridge` marker
+  // is set by `attachUpgrade` below when the path matches the bridge route.
+  if (req.__agentBridge) {
+    // Defensive: scrub any inbound Authorization the client may have sent.
+    proxyReq.removeHeader("Authorization");
+    debug(`[proxy-ws] bridge passthrough ${req.url} — no token injection`);
+    return;
+  }
+  proxyReq.setHeader("Authorization", `Bearer ${getGatewayToken()}`);
   debug(
-    `[proxy-ws] WebSocket ${req.url} - injected token (fingerprint: ${tokenLogSafe(gatewayToken)})`
+    `[proxy-ws] WebSocket ${req.url} - injected token (fingerprint: ${tokenLogSafe(getGatewayToken())})`
   );
 });
 
@@ -133,14 +151,14 @@ export async function controlUiHandler(req, res, next) {
   if (!isConfigured()) return next();
 
   try {
-    await ensureGatewayRunning(gatewayToken);
+    await ensureGatewayRunning(getGatewayToken());
   } catch {
     return next();
   }
 
   try {
     const upstream = await fetch(`${GATEWAY_TARGET}${req.originalUrl}`, {
-      headers: { Authorization: `Bearer ${gatewayToken}` },
+      headers: { Authorization: `Bearer ${getGatewayToken()}` },
       redirect: "follow",
     });
 
@@ -190,7 +208,7 @@ export async function catchAllMiddleware(req, res) {
 
   if (isConfigured()) {
     try {
-      await ensureGatewayRunning(gatewayToken);
+      await ensureGatewayRunning(getGatewayToken());
     } catch (err) {
       return res
         .status(503)
@@ -204,14 +222,53 @@ export async function catchAllMiddleware(req, res) {
 
 /**
  * Attach WebSocket upgrade handler to the HTTP server.
+ *
+ * Two upgrade paths:
+ *
+ *  1. **Agent-bridge bypass** — path matches `AGENT_BRIDGE_WS_PATH`
+ *     (default `/openclaw/ws`). Skips Basic-auth (the v3 device-pair
+ *     handshake authenticates via `auth.token` in the WS connect req)
+ *     and does NOT inject a wrapper-supplied Authorization header.
+ *     Used by the Go agent-bridge in Senpi-ai/agent-bridge
+ *     `v3/go-rewrite`.
+ *
+ *  2. **Catch-all** — every other path. Existing behaviour:
+ *     SETUP_PASSWORD Basic auth + injected `Authorization: Bearer
+ *     <gatewayToken>`.
+ *
  * @param {import("http").Server} server
  */
 export function attachUpgrade(server) {
+  const bridgePath = resolveAgentBridgeWsPath();
+
   server.on("upgrade", async (req, socket, head) => {
     if (!isConfigured()) {
       socket.destroy();
       return;
     }
+
+    const isBridge = isAgentBridgeUpgradePath(req.url, bridgePath);
+
+    if (isBridge) {
+      // Bridge path: no Basic auth, no token injection.
+      try {
+        await ensureGatewayRunning(getGatewayToken());
+      } catch {
+        socket.destroy();
+        return;
+      }
+      // Strip any client-supplied Authorization to keep wire behavior
+      // identical to direct-to-gateway. The bridge sends its credential
+      // in the `connect` JSON payload, not in HTTP headers.
+      delete req.headers.authorization;
+      req.__agentBridge = true;
+      console.log(
+        `[ws-upgrade] Bridge passthrough (url=${req.url}) — no auth injection`,
+      );
+      proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
+      return;
+    }
+
     if (!SETUP_PASSWORD) {
       socket.destroy();
       return;
@@ -230,13 +287,13 @@ export function attachUpgrade(server) {
       return;
     }
     try {
-      await ensureGatewayRunning(gatewayToken);
+      await ensureGatewayRunning(getGatewayToken());
     } catch {
       socket.destroy();
       return;
     }
 
-    if (!gatewayToken) {
+    if (!getGatewayToken()) {
       console.error(
         "[ws-upgrade] Cannot proxy WebSocket: OPENCLAW_GATEWAY_TOKEN is empty"
       );
@@ -244,7 +301,7 @@ export function attachUpgrade(server) {
       return;
     }
 
-    req.headers.authorization = `Bearer ${gatewayToken}`;
+    req.headers.authorization = `Bearer ${getGatewayToken()}`;
     console.log(`[ws-upgrade] Proxying WebSocket to gateway (url=${req.url})`);
     proxy.ws(req, socket, head, { target: GATEWAY_TARGET });
   });

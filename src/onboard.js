@@ -26,6 +26,8 @@ import { runCmd } from "./lib/runCmd.js";
 import { clawArgs, ensureGatewayRunning, restartGateway } from "./gateway.js";
 import { bootstrapOpenClaw } from "./bootstrap.mjs";
 import { readCachedTelegramId, writeCachedTelegramId } from "./lib/telegramId.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 const AUTO_ONBOARD_FINGERPRINT_FILE = path.join(
   STATE_DIR,
@@ -469,16 +471,34 @@ console.log(`[auto-onboard] directory created`);
         "true",
       ])
     );
-    await runCmd(
-      OPENCLAW_NODE,
-      clawArgs([
-        "config",
-        "set",
-        "--json",
-        "gateway.controlUi.dangerouslyDisableDeviceAuth",
-        "true",
-      ])
-    );
+    if (shouldSetDangerousDeviceAuthFlag()) {
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs([
+          "config",
+          "set",
+          "--json",
+          "gateway.controlUi.dangerouslyDisableDeviceAuth",
+          "true",
+        ])
+      );
+    } else {
+      // Lock-step with bootstrap.mjs / gateway.js / setup.js: strip any
+      // stale `true` left by a previous deploy so flipping the env var
+      // actually takes effect. No-op on a fresh config (this is a
+      // not-configured auto-onboard path), kept for parity.
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs([
+          "config",
+          "unset",
+          "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        ])
+      );
+      console.log(
+        "[auto-onboard] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
+      );
+    }
     await runCmd(
       OPENCLAW_NODE,
       clawArgs([
@@ -489,6 +509,24 @@ console.log(`[auto-onboard] directory created`);
         JSON.stringify(["127.0.0.1", "::1"]),
       ])
     );
+
+    // Origin allowlist for webchat-class clients (agent-bridge). See
+    // src/lib/allowedOrigins.js for the rationale.
+    {
+      const allowed = resolveAllowedOrigins();
+      if (allowed.length > 0) {
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs([
+            "config",
+            "set",
+            "--json",
+            "gateway.controlUi.allowedOrigins",
+            JSON.stringify(allowed),
+          ])
+        );
+      }
+    }
 
     if (TELEGRAM_BOT_TOKEN) {
       console.log("[auto-onboard] Configuring Telegram channel...");
