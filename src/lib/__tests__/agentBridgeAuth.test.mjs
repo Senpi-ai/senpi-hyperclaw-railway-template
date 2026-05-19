@@ -4,9 +4,19 @@
  * Why it exists: the existing `isLoopbackOperatorRequest` predicate only
  * approves loopback operator pairings (Telegram provider, cron, session WS).
  * The Go agent-bridge (Senpi-ai/agent-bridge, v3/go-rewrite) connects from a
- * remote host with `client.id="webchat-ui" mode="webchat" role="user"
- * scopes=["chat"]`. Without a second predicate the wrapper silently ignores
- * the pending request and the bridge times out with `1008 pairing required`.
+ * remote host with `client.id="webchat-ui" mode="webchat" role="operator"
+ * scopes=["operator.admin", "operator.approvals"]`. Without a second
+ * predicate the wrapper silently ignores the pending request and the bridge
+ * times out with `1008 pairing required`.
+ *
+ * Scope notes (verified against openclaw v2026.5.18):
+ * - Only the six `operator.*` strings in `src/gateway/operator-scopes.ts`
+ *   are valid scopes (`admin/read/write/approvals/pairing/talk.secrets`).
+ *   The previous default `["chat"]` matched nothing on the openclaw side
+ *   and was a no-op gate.
+ * - `operator.admin` auto-implies `operator.read` + `operator.write`
+ *   (`src/shared/device-auth.ts`) but does NOT imply `operator.approvals`,
+ *   which is why the bridge must request both.
  *
  * Trust boundary: a request only reaches `pendingRequests` after OpenClaw
  * verified `auth.token` against the gateway shared secret
@@ -30,18 +40,23 @@ test("parseAgentBridgeConfigFromEnv: defaults when env is empty", () => {
   const cfg = parseAgentBridgeConfigFromEnv({});
   assert.deepEqual(cfg.clientIds, ["webchat-ui", "senpi-mobile", "senpi-web"]);
   assert.deepEqual(cfg.clientModes, ["webchat"]);
-  assert.deepEqual(cfg.scopes, ["chat"]);
+  // Must match the scope set the bridge actually requests so a stock
+  // wrapper deploy pairs without any operator env tweaks. Both scopes
+  // matter: admin (auto-implies read+write) is needed for chat.send and
+  // sessions.* methods; approvals is the dedicated scope for
+  // exec/plugin.approval.resolve and is NOT auto-included by admin.
+  assert.deepEqual(cfg.scopes, ["operator.admin", "operator.approvals"]);
 });
 
 test("parseAgentBridgeConfigFromEnv: env overrides win", () => {
   const cfg = parseAgentBridgeConfigFromEnv({
     AGENT_BRIDGE_CLIENT_IDS: "foo,bar",
     AGENT_BRIDGE_CLIENT_MODES: "alpha,beta",
-    AGENT_BRIDGE_SCOPES_ALLOWLIST: "chat,notify",
+    AGENT_BRIDGE_SCOPES_ALLOWLIST: "operator.admin,operator.approvals",
   });
   assert.deepEqual(cfg.clientIds, ["foo", "bar"]);
   assert.deepEqual(cfg.clientModes, ["alpha", "beta"]);
-  assert.deepEqual(cfg.scopes, ["chat", "notify"]);
+  assert.deepEqual(cfg.scopes, ["operator.admin", "operator.approvals"]);
 });
 
 test("parseAgentBridgeConfigFromEnv: trims whitespace and drops empties", () => {
@@ -65,21 +80,21 @@ test("parseAgentBridgeConfigFromEnv: empty value → empty list (locks out every
 const defaultCfg = {
   clientIds: ["webchat-ui", "senpi-mobile", "senpi-web"],
   clientModes: ["webchat"],
-  scopes: ["chat"],
+  scopes: ["operator.admin", "operator.approvals"],
 };
 
 function bridgeReq(overrides = {}) {
   return {
     requestId: "req-abc",
     role: "operator",
-    scopes: ["chat"],
+    scopes: ["operator.admin", "operator.approvals"],
     client: { id: "webchat-ui", mode: "webchat" },
     remoteIp: "203.0.113.7",
     ...overrides,
   };
 }
 
-test("isAgentBridgeRequest: canonical webchat-ui/operator/chat → true", () => {
+test("isAgentBridgeRequest: canonical webchat-ui/operator/[admin,approvals] → true", () => {
   // Note: role MUST be "operator", not "user" — OpenClaw v2026.5.x's
   // GatewayRole enum is exactly ["operator", "node"] (role-policy.ts:3).
   // The bridge accordingly sends role=operator (orchestrator.go).
@@ -112,7 +127,7 @@ test("isAgentBridgeRequest: flat client.id field (v2026.5.x list shape) → true
       {
         requestId: "r",
         role: "operator",
-        scopes: ["chat"],
+        scopes: ["operator.admin", "operator.approvals"],
         clientId: "webchat-ui",
         clientMode: "webchat",
         remoteIp: "203.0.113.7",
@@ -124,12 +139,10 @@ test("isAgentBridgeRequest: flat client.id field (v2026.5.x list shape) → true
 });
 
 test("isAgentBridgeRequest: scopes subset of allowlist → true", () => {
-  // Allowlist `["chat", "notify"]`, request asks for `["chat"]` → subset OK.
+  // Allowlist is the canonical `[operator.admin, operator.approvals]`;
+  // a request asking for just `[operator.admin]` is a subset → admit.
   assert.equal(
-    isAgentBridgeRequest(bridgeReq({ scopes: ["chat"] }), {
-      ...defaultCfg,
-      scopes: ["chat", "notify"],
-    }),
+    isAgentBridgeRequest(bridgeReq({ scopes: ["operator.admin"] }), defaultCfg),
     true,
   );
 });
@@ -147,8 +160,15 @@ test("isAgentBridgeRequest: role=node → false (only operator allowed for chat 
 });
 
 test("isAgentBridgeRequest: scope outside allowlist → false", () => {
+  // Asking for an extra scope not in the allowlist (e.g. operator.pairing
+  // which we don't want to auto-grant) → reject. The wrapper deliberately
+  // narrows auto-approval to the two scopes the chat path needs;
+  // pairing-scope upgrades still require a human approver.
   assert.equal(
-    isAgentBridgeRequest(bridgeReq({ scopes: ["chat", "admin"] }), defaultCfg),
+    isAgentBridgeRequest(
+      bridgeReq({ scopes: ["operator.admin", "operator.approvals", "operator.pairing"] }),
+      defaultCfg,
+    ),
     false,
   );
 });
@@ -202,13 +222,20 @@ test("isAgentBridgeRequest: duplicate scopes still pass when each is in allowlis
   // OpenClaw may list duplicates from a re-pair flow; we accept as long as
   // the deduped set is a subset.
   assert.equal(
-    isAgentBridgeRequest(bridgeReq({ scopes: ["chat", "chat"] }), defaultCfg),
+    isAgentBridgeRequest(
+      bridgeReq({ scopes: ["operator.admin", "operator.admin"] }),
+      defaultCfg,
+    ),
     true,
   );
 });
 
 test("isAgentBridgeRequest: empty allowlist locks everything out", () => {
-  const cfg = { clientIds: [], clientModes: ["webchat"], scopes: ["chat"] };
+  const cfg = {
+    clientIds: [],
+    clientModes: ["webchat"],
+    scopes: ["operator.admin", "operator.approvals"],
+  };
   assert.equal(isAgentBridgeRequest(bridgeReq(), cfg), false);
 });
 
