@@ -128,3 +128,78 @@ docker run --rm -p 8080:8080 \
 
 # open http://localhost:8080/setup (password: test)
 ```
+
+## External agent-bridge integration
+
+The template exposes an OpenClaw gateway endpoint that an external
+[`agent-bridge`](https://github.com/Senpi-ai/agent-bridge) (Go rewrite,
+branch `v3/go-rewrite`) can dial to perform the v3 device-pair
+handshake.
+
+**1. Fetch the three credentials.** With `SETUP_PASSWORD` set, GET
+`/setup/api/agent-bridge-creds` over Basic auth:
+
+```bash
+curl -u "admin:$SETUP_PASSWORD" \
+  https://<your-deploy>.up.railway.app/setup/api/agent-bridge-creds
+# {
+#   "gatewayUrl": "wss://<your-deploy>.up.railway.app/openclaw/ws",
+#   "bootstrapToken": "...",
+#   "agentId": "<project-name>-<service-name>"
+# }
+```
+
+Each read is audit-logged (`[agent-bridge-creds] CREDENTIALS READ …`).
+
+**2. Plug into the bridge's `.env`:**
+
+```
+OPENCLAW_GATEWAY_URL=<gatewayUrl>
+OPENCLAW_BOOTSTRAP_TOKEN=<bootstrapToken>
+OPENCLAW_AGENT_ID=<agentId>
+```
+
+**3. The wrapper auto-approves the bridge's pairing request.** When the
+bridge connects, OpenClaw places it in `pendingRequests` after verifying
+the bootstrap token. The wrapper's approval loop (`src/lib/deviceAuth.js`)
+matches the request against the agent-bridge allowlist and approves it
+via the local Node-import path, so the bridge gets a `hello-ok` with a
+persistent `deviceToken` on the first or second reconnect attempt.
+
+**Allowlist defaults** (override via env vars):
+
+| Env var                          | Default                                 |
+|----------------------------------|------------------------------------------|
+| `AGENT_BRIDGE_WS_PATH`           | `/openclaw/ws`                          |
+| `AGENT_BRIDGE_CLIENT_IDS`        | `webchat-ui,senpi-mobile,senpi-web`     |
+| `AGENT_BRIDGE_CLIENT_MODES`      | `webchat`                               |
+| `AGENT_BRIDGE_SCOPES_ALLOWLIST`  | `chat`                                  |
+| `DEVICE_AUTH_STEADY_INTERVAL_MS` | `10000` (poll cadence outside burst)    |
+
+`client.id` is attacker-controlled metadata, not a security boundary —
+the bootstrap token (verified upstream by OpenClaw) is the real gate.
+The allowlist exists to narrow auto-approval to the user-chat path so
+operator-scope upgrades still need a human. See `CLAUDE.md` Quirk #14.
+
+### Optional: re-enable `dangerouslyDisableDeviceAuth`
+
+As of 2026-05-16 the wrapper **no longer writes**
+`gateway.controlUi.dangerouslyDisableDeviceAuth` by default. The flag
+never engaged for internal clients or the agent-bridge (different code
+paths); its only real effect was admitting a remote Control UI browser
+without device pairing.
+
+If you still want browser-based Control UI access without pairing
+(debugging convenience), opt back in:
+
+```
+OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
+```
+
+Otherwise debug from inside the container:
+
+```sh
+railway ssh
+openclaw sessions ls
+openclaw devices list --json
+```
