@@ -194,7 +194,7 @@ export const AI_PROVIDER_MODEL_MAP = {
   openai: "openai/gpt-5.2",
   gemini: "google/gemini-2.5-pro",
   google: "google/gemini-2.5-pro",
-  openrouter: "openrouter/anthropic/claude-sonnet-4-5",
+  openrouter: "openrouter/auto",
   moonshot: "moonshot/kimi-k2.5",
   zai: "zai/glm-5",
   venice: "venice/llama-3.3-70b",
