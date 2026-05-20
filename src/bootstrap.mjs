@@ -477,28 +477,57 @@ function installSenpiRuntimePluginIfNeeded() {
   // Write the minimal record (source + spec + installPath) that update requires.
   if (exists(pluginDir)) {
     const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-    if (!cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
-      let version;
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
-        version = pkg.version;
-      } catch { /* best-effort */ }
-      cfg.plugins = cfg.plugins || {};
-      cfg.plugins.installs = cfg.plugins.installs || {};
-      cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
-        source: "npm",
-        spec: SENPI_RUNTIME_NPM_SPEC,
-        installPath: pluginDir,
-        ...(version ? { version } : {}),
-        installedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    const installRecord = cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID];
+    const currentSpec = installRecord?.spec;
+
+    // Spec-mismatch reinstall: if the install record's spec no longer matches
+    // SENPI_RUNTIME_NPM_SPEC (e.g. dist-tag flipped @beta → branch-test-*),
+    // tear down the install dir + record so the install block below replaces
+    // it. Without this, `exists(pluginDir)` short-circuits and the volume's
+    // stale install survives across redeploys. Skipped when no install record
+    // exists yet (handled by backfill path below) or when specs match (fast
+    // path: nothing to do). Filesystem-level removal — does not invoke the
+    // plugin's own uninstall hook, so runtime state under STATE_DIR/senpi-state
+    // and channel/gateway config in openclaw.json are preserved.
+    if (currentSpec && currentSpec !== SENPI_RUNTIME_NPM_SPEC) {
       console.log(
-        `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
-        (version ? ` (v${version})` : "")
+        `[bootstrap] installed spec (${currentSpec}) differs from configured ` +
+        `(${SENPI_RUNTIME_NPM_SPEC}); wiping ${pluginDir} + install record to force reinstall`
       );
+      try {
+        fs.rmSync(pluginDir, { recursive: true, force: true });
+      } catch (err) {
+        console.error(`[bootstrap] failed to remove ${pluginDir}:`, err?.message ?? err);
+      }
+      if (cfg.plugins?.installs) {
+        delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+      }
+      // Fall through to the install block below.
+    } else {
+      if (!installRecord) {
+        let version;
+        try {
+          const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
+          version = pkg.version;
+        } catch { /* best-effort */ }
+        cfg.plugins = cfg.plugins || {};
+        cfg.plugins.installs = cfg.plugins.installs || {};
+        cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
+          source: "npm",
+          spec: SENPI_RUNTIME_NPM_SPEC,
+          installPath: pluginDir,
+          ...(version ? { version } : {}),
+          installedAt: new Date().toISOString(),
+        };
+        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+        console.log(
+          `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
+          (version ? ` (v${version})` : "")
+        );
+      }
+      return;
     }
-    return;
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
