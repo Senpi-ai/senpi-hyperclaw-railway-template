@@ -139,6 +139,7 @@ export const DESIRED_MODELS = {
   "openrouter/deepseek/deepseek-chat": { alias: "DeepSeek Chat (OpenRouter)" },
   "openrouter/google/gemini-3.1-pro-preview": { alias: "Gemini 3.1 Pro (OpenRouter)" },
   "openrouter/google/gemini-2.5-pro": { alias: "Gemini 2.5 Pro (OpenRouter)" },
+  "openrouter/auto": { alias: "Auto (OpenRouter)" },
 
   // ── OpenCode Zen ──
   "opencode/claude-opus-4-6": { alias: "Opus 4.6 (OpenCode)" },
