@@ -41,7 +41,12 @@ const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 // still lands on disk under its npm name, so the path probe needs the bare
 // name (without `@beta`) to find the install directory.
 const SENPI_RUNTIME_NPM_NAME = "@senpi/runtime";
-const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime@beta";
+// TEMPORARY (sarvesh, 2026-05-20): pointing at a throwaway CI publish from
+// senpi-trading-runtime branch `test/spans-on-upgrade-sarvesh` (feat/spans-runtime
+// merged onto openclaw-upgrade/main) so this deploy picks up the spans/telemetry
+// runtime without waiting for the spans work to land in @beta. Revert to
+// "@senpi/runtime@beta" when telemetry merges to openclaw-upgrade/main upstream.
+const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime@branch-test-spans-on-upgrade-sarvesh";
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
