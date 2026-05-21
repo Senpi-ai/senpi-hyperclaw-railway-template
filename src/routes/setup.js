@@ -30,6 +30,7 @@ import {
 import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
 import { createIssueBootstrapTokenRoute } from "./issue-bootstrap-token.js";
+import { createApproveDevicePairingRoute } from "./approve-device-pairing.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -178,6 +179,7 @@ export function createSetupRouter() {
   // is the POST handler; this router mounts at `/api`, child path adds
   // `/issue-bootstrap-token`.
   router.use("/api", requireSetupAuth, createIssueBootstrapTokenRoute());
+  router.use("/api", requireSetupAuth, createApproveDevicePairingRoute());
 
   router.get("/api/status", requireSetupAuth, async (_req, res) => {
     const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
