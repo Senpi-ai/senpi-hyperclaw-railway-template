@@ -157,6 +157,7 @@ export const DESIRED_MODELS = {
   "litellm/deepseek-v4-flash": { alias: "DeepSeek V4 Flash (LiteLLM)" },
   "litellm/deepseek-v4-pro":   { alias: "DeepSeek V4 Pro (LiteLLM)" },
   "litellm/qwen3.6-35b-a3b":   { alias: "Qwen3.6 35B A3B (LiteLLM)" },
+  "litellm/qwen3.6-27b":       { alias: "Qwen3.6 27b (LiteLLM)" },
   "litellm/kimi-k2.6":         { alias: "Kimi K2.6 (LiteLLM)" },
   "litellm/llama-4-maverick":  { alias: "Llama 4 Maverick (LiteLLM)" },
   "litellm/glm-5.1":           { alias: "GLM 5.1 (LiteLLM)" },
