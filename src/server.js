@@ -19,7 +19,6 @@ import {
 } from "./lib/config.js";
 import { resolveGatewayToken } from "./lib/auth.js";
 import { getGatewayProcess, restartGateway } from "./gateway.js";
-import { stopAutoApprovalLoop } from "./lib/deviceAuth.js";
 import {
   autoOnboard,
   canAutoOnboard,
@@ -175,7 +174,6 @@ const server = app.listen(PORT, () => {
 attachUpgrade(server);
 
 process.on("SIGTERM", () => {
-  stopAutoApprovalLoop();
   try {
     const proc = getGatewayProcess();
     if (proc) proc.kill("SIGTERM");

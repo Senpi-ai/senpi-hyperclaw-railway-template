@@ -19,10 +19,8 @@ import {
 } from "./lib/config.js";
 import { tokenLogSafe } from "./lib/auth.js";
 import { runCmd } from "./lib/runCmd.js";
-import {
-  startAutoApprovalLoop,
-  stopAutoApprovalLoop,
-} from "./lib/deviceAuth.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
@@ -200,29 +198,37 @@ export async function startGateway(gatewayToken) {
       "true",
     ])
   );
-  await runCmd(
-    OPENCLAW_NODE,
-    clawArgs([
-      "config",
-      "set",
-      "--json",
-      "gateway.controlUi.dangerouslyDisableDeviceAuth",
-      "true",
-    ])
-  );
-
-  // Mirror CONTROLUI_ALLOWED_ORIGINS (CSV) into openclaw's gateway config.
-  // Webchat-mode connects from the agent-bridge / orchestrator pair flow
-  // are rejected with "INVALID_REQUEST: origin not allowed" unless their
-  // `Origin` header value appears here. The orchestrator passes the same
-  // value to its own dial code (AGENT_BRIDGE_ORIGIN) and to this env var,
-  // so the two ends agree without each side hardcoding the sentinel.
-  const allowedOriginsCsv = (process.env.CONTROLUI_ALLOWED_ORIGINS || "").trim();
-  if (allowedOriginsCsv) {
-    const allowedOrigins = allowedOriginsCsv
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const setDangerousFlag = shouldSetDangerousDeviceAuthFlag();
+  if (setDangerousFlag) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "set",
+        "--json",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+        "true",
+      ])
+    );
+  } else {
+    // Hatch: operator opted out via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false.
+    // Strip any pre-existing setting so a redeploy that flips the var actually
+    // takes effect — otherwise the previous `true` would persist in openclaw.json.
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs([
+        "config",
+        "unset",
+        "gateway.controlUi.dangerouslyDisableDeviceAuth",
+      ])
+    );
+  }
+  // Origin allowlist (gateway.controlUi.allowedOrigins) — required for the
+  // bridge's webchat-class connect to pass OpenClaw v2026.5.x's origin
+  // check. Re-resolved on every gateway start so a redeploy with a new
+  // RAILWAY_PUBLIC_DOMAIN or AGENT_BRIDGE_ALLOWED_ORIGINS picks up.
+  const allowed = resolveAllowedOrigins();
+  if (allowed.length > 0) {
     await runCmd(
       OPENCLAW_NODE,
       clawArgs([
@@ -230,22 +236,28 @@ export async function startGateway(gatewayToken) {
         "set",
         "--json",
         "gateway.controlUi.allowedOrigins",
-        JSON.stringify(allowedOrigins),
+        JSON.stringify(allowed),
       ])
-    );
-    console.log(
-      `[gateway] Set gateway.controlUi.allowedOrigins=${JSON.stringify(allowedOrigins)}`
     );
   }
 
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
-  console.log(
-    `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
-  );
-  if (devAuth !== true) {
-    console.warn(
-      `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+  if (setDangerousFlag) {
+    console.log(
+      `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
+    );
+    if (devAuth !== true) {
+      console.warn(
+        `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+      );
+    }
+  } else {
+    // Default since 2026-05-16: flag is intentionally omitted. Set
+    // OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in
+    // (see CLAUDE.md Quirk #15).
+    console.log(
+      `[gateway] dangerouslyDisableDeviceAuth omitted (default); verified: ${devAuth === undefined ? "absent" : devAuth}`
     );
   }
 
@@ -328,7 +340,6 @@ export async function ensureGatewayRunning(gatewayToken) {
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
-      startAutoApprovalLoop();
     })().finally(() => {
       gatewayStarting = null;
     });
@@ -343,7 +354,6 @@ export async function ensureGatewayRunning(gatewayToken) {
  */
 export async function restartGateway(gatewayToken) {
   console.log("[gateway] Restarting gateway...");
-  stopAutoApprovalLoop();
 
   if (gatewayProc) {
     console.log("[gateway] Killing wrapper-managed gateway process");
