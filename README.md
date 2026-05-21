@@ -128,3 +128,26 @@ docker run --rm -p 8080:8080 \
 
 # open http://localhost:8080/setup (password: test)
 ```
+
+## Optional: re-enable `dangerouslyDisableDeviceAuth`
+
+As of 2026-05-16 the wrapper **no longer writes**
+`gateway.controlUi.dangerouslyDisableDeviceAuth` by default. The flag
+never engaged for internal clients or the agent-bridge (different code
+paths); its only real effect was admitting a remote Control UI browser
+without device pairing.
+
+If you still want browser-based Control UI access without pairing
+(debugging convenience), opt back in:
+
+```
+OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
+```
+
+Otherwise debug from inside the container:
+
+```sh
+railway ssh
+openclaw sessions ls
+openclaw devices list --json
+```

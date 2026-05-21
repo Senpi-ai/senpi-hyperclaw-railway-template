@@ -252,3 +252,16 @@ This avoids repeatedly reading large files and provides instant context about th
     Cutover to `@senpi-ai/runtime` happens when these merge to prod `main` + a 1.2.0 release ships. Until then, deployments from this branch pull `@senpi/runtime@beta` on every boot. In `openclaw.json`, `plugins.allow` / `plugins.entries` still use the **manifest id** `runtime` (OpenClaw derives `idHint` from the unscoped npm name regardless of which scope). Set `SENPI_TRADING_RUNTIME_ENABLED=false` to disable.
 
 12. **`--dangerously-force-unsafe-install` retired from `openclaw plugins install`** → OpenClaw v2026.5.x's install gate (skill-scanner.ts dangerous-exec rule) flags any plugin file with both a `spawn(/exec(` call and the literal `child_process` in the same file. The wrapper used to pass `--dangerously-force-unsafe-install` so the trusted, first-party senpi plugin could install through. As of `@senpi/runtime` `1.2.0-dev.openclaw-upgrade-mai.<timestamp>` (after the safe-spawn refactor — see plugin commit `89a07f7`), the compiled plugin JS no longer contains the literal, so the gate doesn't fire and the bypass flag is gone. **If `openclaw plugins install` ever fails with "dangerous code patterns detected"**, it means a future plugin publish reintroduced the literal — check `dist/runtime/auto-update/command-runner.js`, `dist/cli/senpi-commands.js`, and `dist/utils/safe-spawn.js`. The plugin's `src/utils/__tests__/safe-spawn.test.ts` has a regression-guard test that fails if `dist/utils/safe-spawn.js` ever contains `child_process`.
+
+13. **`OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH` default is OFF** → The wrapper no longer writes `gateway.controlUi.dangerouslyDisableDeviceAuth=true` by default. Rationale, verified against OpenClaw v2026.5.7 source:
+    - **Internal clients** (Telegram provider, cron, session WS) never needed the flag — they're not `isControlUi`, so the flag's guard in `connect-policy.ts:122-130` never engaged. They pass through `shouldSkipLocalBackendSelfPairing` (`handshake-auth-helpers.ts:252-272`), an unrelated code path.
+    - **The agent-bridge** (`client.id=webchat-ui mode=webchat`) is classified as `isWebchat`, not `isControlUi` (`utils/message-channel.ts`) — same conclusion.
+    - **The flag's ONLY real effect** was admitting a remote Control UI browser without device pairing. The product surface is moving to senpi-web → agent-bridge → openclaw; Control UI is now a debugging convenience recoverable via `railway ssh` + the openclaw CLI from inside the container.
+
+    Operators who still want browser-based Control UI without pairing can opt back in:
+    ```
+    OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
+    ```
+    Accepted truthy values: `true` / `1` / `yes` / `on` (trim + lowercase). Anything else (including typos) stays OFF — fail-closed for a `dangerously*` flag.
+
+    **The four write-sites kept in lock-step**: `src/bootstrap.mjs`, `src/onboard.js`, `src/gateway.js`, `src/routes/setup.js` — any future change must update all four together or the wrapper drifts between boot and re-onboard. On the disable branch (default), `gateway.js` also runs `config unset` to strip a stale `true` left by a previous deploy.
