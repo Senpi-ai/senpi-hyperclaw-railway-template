@@ -32,6 +32,8 @@ import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
 import { createIssueBootstrapTokenRoute } from "./issue-bootstrap-token.js";
 import { createApproveDevicePairingRoute } from "./approve-device-pairing.js";
+import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "../lib/allowedOrigins.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -322,16 +324,30 @@ export function createSetupRouter() {
             "true",
           ])
         );
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs([
-            "config",
-            "set",
-            "--json",
-            "gateway.controlUi.dangerouslyDisableDeviceAuth",
-            "true",
-          ])
-        );
+        if (shouldSetDangerousDeviceAuthFlag()) {
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+              "true",
+            ])
+          );
+        } else {
+          // Lock-step with bootstrap.mjs / gateway.js / onboard.js: strip
+          // a stale `true` from any prior deploy so the wizard run honours
+          // the flipped env var.
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "unset",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+            ])
+          );
+        }
         await runCmd(
           OPENCLAW_NODE,
           clawArgs([
@@ -342,6 +358,24 @@ export function createSetupRouter() {
             JSON.stringify(["127.0.0.1", "::1"]),
           ])
         );
+
+        // Origin allowlist for webchat-class clients (agent-bridge).
+        // See src/lib/allowedOrigins.js.
+        {
+          const allowed = resolveAllowedOrigins();
+          if (allowed.length > 0) {
+            await runCmd(
+              OPENCLAW_NODE,
+              clawArgs([
+                "config",
+                "set",
+                "--json",
+                "gateway.controlUi.allowedOrigins",
+                JSON.stringify(allowed),
+              ])
+            );
+          }
+        }
 
         const channelsHelp = await runCmd(
           OPENCLAW_NODE,
