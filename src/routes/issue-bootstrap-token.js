@@ -11,6 +11,7 @@ import express from "express";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createIpRateLimiter } from "../lib/rateLimit.js";
+import { STATE_DIR } from "../lib/config.js";
 
 const DEFAULT_OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
 
@@ -44,7 +45,15 @@ export function createIssueBootstrapTokenRoute(deps = {}) {
       return res.status(503).json({ error: "plugin-sdk module not loadable", detail: String(err) });
     }
     try {
-      const { token, ttlSeconds } = await mod.issueDeviceBootstrapToken();
+      // baseDir passed explicitly: the SDK otherwise resolves the state
+      // dir from process.env.OPENCLAW_STATE_DIR, which can be unset in
+      // the wrapper process → it would write `bootstrap.json` to an
+      // empty ~/.openclaw instead of the gateway's STATE_DIR
+      // (/data/.openclaw), and the resulting token would not match any
+      // bootstrap secret the gateway accepts at connect time.
+      const { token, ttlSeconds } = await mod.issueDeviceBootstrapToken({
+        baseDir: STATE_DIR,
+      });
       return res.json({
         bootstrapToken: token,
         ttlSeconds: ttlSeconds ?? 600,

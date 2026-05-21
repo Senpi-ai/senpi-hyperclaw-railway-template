@@ -12,6 +12,17 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
 import { createApproveDevicePairingRoute } from "../approve-device-pairing.js";
+import { STATE_DIR } from "../../lib/config.js";
+
+// Mirror of APPROVE_CALLER_SCOPES in the route — the full operator cohort,
+// with operator.approvals listed explicitly (separate capability).
+const EXPECTED_CALLER_SCOPES = [
+  "operator.admin",
+  "operator.approvals",
+  "operator.read",
+  "operator.talk.secrets",
+  "operator.write",
+];
 
 function bootApp(deps) {
   const app = express();
@@ -79,14 +90,16 @@ function pendingFixture(overrides = {}) {
 test("approve-device-pairing: approves a matching pending and returns the deviceId + operator deviceToken", async (t) => {
   let listCalls = 0;
   let approveCalls = 0;
-  const fakeList = async () => {
+  const fakeList = async (baseDir) => {
     listCalls += 1;
+    assert.equal(baseDir, STATE_DIR, "listDevicePairing must receive baseDir=STATE_DIR");
     return { pending: [pendingFixture()], paired: [] };
   };
-  const fakeApprove = async (requestId, opts) => {
+  const fakeApprove = async (requestId, opts, baseDir) => {
     approveCalls += 1;
     assert.equal(requestId, "req-1");
-    assert.deepEqual(opts, { callerScopes: ["operator.admin"] });
+    assert.deepEqual(opts, { callerScopes: EXPECTED_CALLER_SCOPES });
+    assert.equal(baseDir, STATE_DIR, "approveDevicePairing must receive baseDir=STATE_DIR");
     return {
       status: "approved",
       requestId,
