@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
 import { createIssueBootstrapTokenRoute } from "../issue-bootstrap-token.js";
+import { STATE_DIR } from "../../lib/config.js";
 
 function bootApp(deps) {
   const app = express();
@@ -61,8 +62,10 @@ function postJSON(url, body) {
 
 test("issue-bootstrap-token: returns a freshly minted token on success", async (t) => {
   let calls = 0;
-  const fakeIssue = async () => {
+  let seenArg;
+  const fakeIssue = async (arg) => {
     calls += 1;
+    seenArg = arg;
     return { token: "tok-abc", ttlSeconds: 600 };
   };
   const app = await bootApp({ loadPluginSDK: async () => ({ issueDeviceBootstrapToken: fakeIssue }) });
@@ -74,6 +77,9 @@ test("issue-bootstrap-token: returns a freshly minted token on success", async (
   assert.equal(res.body.ttlSeconds, 600);
   assert.match(res.body.issuedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(calls, 1);
+  // Must pass baseDir=STATE_DIR so the SDK writes bootstrap.json to the
+  // gateway's state dir, not process.env's empty default.
+  assert.deepEqual(seenArg, { baseDir: STATE_DIR });
 });
 
 test("issue-bootstrap-token: returns 503 if plugin-SDK module fails to load", async (t) => {

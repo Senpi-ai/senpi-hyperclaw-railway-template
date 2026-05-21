@@ -10,6 +10,7 @@
 import express from "express";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { STATE_DIR } from "../lib/config.js";
 
 const DEFAULT_OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
 
@@ -36,7 +37,9 @@ export function createIssueBootstrapTokenRoute(deps = {}) {
       return res.status(503).json({ error: "plugin-sdk module not loadable", detail: String(err) });
     }
     try {
-      const { token, ttlSeconds } = await mod.issueDeviceBootstrapToken();
+      const { token, ttlSeconds } = await mod.issueDeviceBootstrapToken({
+        baseDir: STATE_DIR,
+      });
       return res.json({
         bootstrapToken: token,
         ttlSeconds: ttlSeconds ?? 600,
