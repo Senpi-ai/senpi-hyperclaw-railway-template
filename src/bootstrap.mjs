@@ -7,7 +7,7 @@ import {
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
-import { TELEGRAM_USERNAME } from "./lib/config.js";
+import { TELEGRAM_USERNAME, SENPI_MCP_URL } from "./lib/config.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -333,7 +333,7 @@ function setupSenpiMcp() {
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  const mcpUrl = process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+  const mcpUrl = SENPI_MCP_URL;
   const senpiToken = resolveSenpiToken();
 
   if (!senpiToken) {

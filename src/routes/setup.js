@@ -18,6 +18,7 @@ import {
   configPath,
   isConfigured,
   SETUP_PASSWORD,
+  SENPI_MCP_URL,
 } from "../lib/config.js";
 import { tokenLogSafe, createRequireSetupAuth } from "../lib/auth.js";
 import { runCmd } from "../lib/runCmd.js";
@@ -546,8 +547,7 @@ export function createSetupRouter() {
       fs.writeFileSync(senpiTokenPath, newToken);
       console.log("[senpi-token] Persisted token to config/senpi.token");
 
-      const mcpUrl =
-        process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+      const mcpUrl = SENPI_MCP_URL;
       const senpiConfig = JSON.stringify({
         url: mcpUrl,
         transport: "streamable-http",
