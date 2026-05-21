@@ -10,6 +10,7 @@
 import express from "express";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createIpRateLimiter } from "../lib/rateLimit.js";
 
 const DEFAULT_OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
 
@@ -20,14 +21,21 @@ function defaultLoadPluginSDK() {
 }
 
 /**
- * Builds the issue-bootstrap-token route. `deps.loadPluginSDK` is overridable
- * in tests.
+ * Builds the issue-bootstrap-token route. `deps.loadPluginSDK` and
+ * `deps.rateLimiter` are overridable in tests.
+ *
+ * The default rate limiter caps mint requests at 10/60s per source IP.
+ * Defense-in-depth: SETUP_PASSWORD is the load-bearing credential here, but
+ * if it leaks, an attacker can mint unlimited bootstrap tokens. Legitimate
+ * use is one-shot per provision or lazy repair, comfortably below the cap.
  */
 export function createIssueBootstrapTokenRoute(deps = {}) {
   const loadPluginSDK = deps.loadPluginSDK || defaultLoadPluginSDK;
+  const rateLimiter =
+    deps.rateLimiter ?? createIpRateLimiter({ windowMs: 60_000, max: 10 });
   const router = express.Router();
 
-  router.post("/issue-bootstrap-token", async (_req, res) => {
+  router.post("/issue-bootstrap-token", rateLimiter, async (_req, res) => {
     let mod;
     try {
       mod = await loadPluginSDK();

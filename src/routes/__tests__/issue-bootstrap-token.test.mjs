@@ -100,3 +100,25 @@ test("issue-bootstrap-token: returns 500 if issueDeviceBootstrapToken throws", a
   assert.equal(res.status, 500);
   assert.match(res.body.error, /threw/i);
 });
+
+test("issue-bootstrap-token: returns 429 once rate limit exceeded", async (t) => {
+  // Inject a tight limiter (max=2) so the test does not need a clock or 60s
+  // of wall time to hit the cap.
+  const { createIpRateLimiter } = await import("../../lib/rateLimit.js");
+  const rateLimiter = createIpRateLimiter({ windowMs: 60_000, max: 2 });
+  const fakeIssue = async () => ({ token: "tok-rl", ttlSeconds: 600 });
+  const app = await bootApp({
+    loadPluginSDK: async () => ({ issueDeviceBootstrapToken: fakeIssue }),
+    rateLimiter,
+  });
+  t.after(() => app.close());
+
+  let res = await postJSON(`${app.baseUrl}/setup/api/issue-bootstrap-token`, {});
+  assert.equal(res.status, 200);
+  res = await postJSON(`${app.baseUrl}/setup/api/issue-bootstrap-token`, {});
+  assert.equal(res.status, 200);
+  res = await postJSON(`${app.baseUrl}/setup/api/issue-bootstrap-token`, {});
+  assert.equal(res.status, 429);
+  assert.equal(res.body.error, "rate limit exceeded");
+  assert.equal(typeof res.body.retryAfterSeconds, "number");
+});
