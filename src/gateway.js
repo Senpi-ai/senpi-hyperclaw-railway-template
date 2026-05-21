@@ -207,33 +207,6 @@ export async function startGateway(gatewayToken) {
     ])
   );
 
-  // Mirror CONTROLUI_ALLOWED_ORIGINS (CSV) into openclaw's gateway config.
-  // Webchat-mode connects from the agent-bridge / orchestrator pair flow
-  // are rejected with "INVALID_REQUEST: origin not allowed" unless their
-  // `Origin` header value appears here. The orchestrator passes the same
-  // value to its own dial code (AGENT_BRIDGE_ORIGIN) and to this env var,
-  // so the two ends agree without each side hardcoding the sentinel.
-  const allowedOriginsCsv = (process.env.CONTROLUI_ALLOWED_ORIGINS || "").trim();
-  if (allowedOriginsCsv) {
-    const allowedOrigins = allowedOriginsCsv
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await runCmd(
-      OPENCLAW_NODE,
-      clawArgs([
-        "config",
-        "set",
-        "--json",
-        "gateway.controlUi.allowedOrigins",
-        JSON.stringify(allowedOrigins),
-      ])
-    );
-    console.log(
-      `[gateway] Set gateway.controlUi.allowedOrigins=${JSON.stringify(allowedOrigins)}`
-    );
-  }
-
   const verify = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
   console.log(
