@@ -39,6 +39,7 @@
 
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { STATE_DIR } from "./config.js";
 
 const DEFAULT_OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
 
@@ -92,8 +93,22 @@ export function classifyLocalApproveResult(result) {
 }
 
 let _modulePromise = null;
+let _loaderOverride = null;
+
+/**
+ * Test seam: override the openclaw device-bootstrap module loader so unit
+ * tests can assert call arguments without the real openclaw bundle on disk.
+ * Pass `null` to restore the real dynamic-import loader. Not used in prod.
+ *
+ * @param {null | (() => Promise<object>)} loader
+ */
+export function __setBootstrapModuleLoaderForTest(loader) {
+  _loaderOverride = loader;
+  _modulePromise = null;
+}
 
 async function loadDeviceBootstrap() {
+  if (_loaderOverride) return _loaderOverride();
   if (_modulePromise) return _modulePromise;
   const url = resolveDeviceBootstrapUrl();
   _modulePromise = import(url).catch((err) => {
@@ -130,11 +145,17 @@ async function loadDeviceBootstrap() {
 // separate `operator.approvals` scope which is NOT auto-included by
 // admin. Approving with admin alone would silently grant a paired
 // device that can chat but 403s every approval-resolve call.
-export async function approveDeviceLocally(requestId) {
+export async function approveDeviceLocally(requestId, baseDir = STATE_DIR) {
   const mod = await loadDeviceBootstrap();
-  return await mod.approveDevicePairing(requestId, {
-    callerScopes: ["operator.admin", "operator.approvals"],
-  });
+  // baseDir is passed explicitly: openclaw's `approveDevicePairing` otherwise
+  // resolves the state dir from `process.env.OPENCLAW_STATE_DIR`, which is
+  // absent in the wrapper process — it would fall back to ~/.openclaw and
+  // never find the gateway's pending requests under STATE_DIR (/data/.openclaw).
+  return await mod.approveDevicePairing(
+    requestId,
+    { callerScopes: ["operator.admin", "operator.approvals"] },
+    baseDir,
+  );
 }
 
 /**
@@ -167,7 +188,9 @@ export async function approveDeviceLocally(requestId) {
  *
  * @returns {Promise<{pending: object[], paired: object[]}>}
  */
-export async function listDevicePairingLocally() {
+export async function listDevicePairingLocally(baseDir = STATE_DIR) {
   const mod = await loadDeviceBootstrap();
-  return await mod.listDevicePairing();
+  // See approveDeviceLocally: pass baseDir explicitly so the SDK reads the
+  // gateway's device dir under STATE_DIR, not the wrapper's empty ~/.openclaw.
+  return await mod.listDevicePairing(baseDir);
 }
