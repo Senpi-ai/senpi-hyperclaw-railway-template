@@ -19,10 +19,6 @@ import {
 } from "./lib/config.js";
 import { tokenLogSafe } from "./lib/auth.js";
 import { runCmd } from "./lib/runCmd.js";
-import {
-  startAutoApprovalLoop,
-  stopAutoApprovalLoop,
-} from "./lib/deviceAuth.js";
 
 let gatewayProc = null;
 let gatewayStarting = null;
@@ -328,7 +324,6 @@ export async function ensureGatewayRunning(gatewayToken) {
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
-      startAutoApprovalLoop();
     })().finally(() => {
       gatewayStarting = null;
     });
@@ -343,7 +338,6 @@ export async function ensureGatewayRunning(gatewayToken) {
  */
 export async function restartGateway(gatewayToken) {
   console.log("[gateway] Restarting gateway...");
-  stopAutoApprovalLoop();
 
   if (gatewayProc) {
     console.log("[gateway] Killing wrapper-managed gateway process");
