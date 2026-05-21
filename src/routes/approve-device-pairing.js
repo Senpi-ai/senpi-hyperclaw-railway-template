@@ -135,6 +135,21 @@ export function createApproveDevicePairingRoute(deps = {}) {
         return res.json({ status: "no-pending" });
       }
       if (result.status === "approved") {
+        // `approveDevicePairing` already minted the deviceToken and
+        // persisted it into paired.json — surface it back to the
+        // caller so the orchestrator skips the otherwise-redundant
+        // reconnect-just-to-read-hello-ok step. openclaw v2026.5.x
+        // keys per-role tokens; our pair flow only ever asks for
+        // `operator`, so that's the one we expose. If the field is
+        // missing (unexpected — would mean openclaw silently changed
+        // its result shape), the orchestrator falls back to its
+        // RunHandshake path.
+        const deviceToken = result.device?.tokens?.operator?.token;
+        if (!deviceToken) {
+          console.warn(
+            `[approve-device-pairing] approved without operator deviceToken in result deviceId=${deviceId} requestId=${pending.requestId}`
+          );
+        }
         console.log(
           `[approve-device-pairing] approved deviceId=${deviceId} requestId=${pending.requestId}`
         );
@@ -142,6 +157,7 @@ export function createApproveDevicePairingRoute(deps = {}) {
           status: "approved",
           deviceId: result.device?.deviceId,
           requestId: pending.requestId,
+          deviceToken,
         });
       }
       // status === "forbidden" with `reason`+optional `scope`. Surface as 422

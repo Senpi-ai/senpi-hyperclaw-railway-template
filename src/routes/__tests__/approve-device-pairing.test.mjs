@@ -76,7 +76,7 @@ function pendingFixture(overrides = {}) {
   };
 }
 
-test("approve-device-pairing: approves a matching pending and returns the deviceId", async (t) => {
+test("approve-device-pairing: approves a matching pending and returns the deviceId + operator deviceToken", async (t) => {
   let listCalls = 0;
   let approveCalls = 0;
   const fakeList = async () => {
@@ -90,7 +90,19 @@ test("approve-device-pairing: approves a matching pending and returns the device
     return {
       status: "approved",
       requestId,
-      device: { deviceId: DEVICE_ID, role: "operator" },
+      device: {
+        deviceId: DEVICE_ID,
+        role: "operator",
+        // Mirrors the real openclaw plugin-SDK shape — per-role token map.
+        tokens: {
+          operator: {
+            token: "dt-from-approve",
+            role: "operator",
+            scopes: ["operator.read"],
+            createdAtMs: 1779299079557,
+          },
+        },
+      },
     };
   };
   const app = await bootApp({
@@ -109,8 +121,40 @@ test("approve-device-pairing: approves a matching pending and returns the device
   assert.equal(res.body.status, "approved");
   assert.equal(res.body.deviceId, DEVICE_ID);
   assert.equal(res.body.requestId, "req-1");
+  assert.equal(
+    res.body.deviceToken,
+    "dt-from-approve",
+    "operator deviceToken must be returned so the orchestrator can skip the redial",
+  );
   assert.equal(listCalls, 1);
   assert.equal(approveCalls, 1);
+});
+
+test("approve-device-pairing: approved without operator token still returns 200 with no deviceToken", async (t) => {
+  // Defensive: if openclaw ever changes the result shape and drops the
+  // operator token entry, the wrapper must NOT 500 — the orchestrator
+  // has a redial fallback for exactly this case. Log a warn so the
+  // regression is visible in operator logs.
+  const fakeApprove = async (requestId) => ({
+    status: "approved",
+    requestId,
+    device: { deviceId: DEVICE_ID, role: "operator", tokens: {} },
+  });
+  const app = await bootApp({
+    loadPluginSDK: async () => ({
+      listDevicePairing: async () => ({ pending: [pendingFixture()], paired: [] }),
+      approveDevicePairing: fakeApprove,
+    }),
+  });
+  t.after(() => app.close());
+
+  const res = await postJSON(`${app.baseUrl}/setup/api/approve-device-pairing`, {
+    deviceId: DEVICE_ID,
+    publicKey: PUBLIC_KEY,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "approved");
+  assert.equal(res.body.deviceToken, undefined);
 });
 
 test("approve-device-pairing: returns no-pending when nothing matches", async (t) => {
