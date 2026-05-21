@@ -44,8 +44,23 @@
 import express from "express";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { STATE_DIR } from "../lib/config.js";
 
 const DEFAULT_OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
+
+// The wrapper is the local-trust approver (filesystem access to the openclaw
+// state dir = admin-equivalent control), so it claims the full operator scope
+// cohort the orchestrator's pairing requests. operator.approvals is listed
+// EXPLICITLY — it is a separate capability (exec/plugin.approval.resolve is
+// gated on it at method-auth time and operator.admin does NOT substitute);
+// do not rely on operator.admin "dominating" it in the approve gate.
+const APPROVE_CALLER_SCOPES = [
+  "operator.admin",
+  "operator.approvals",
+  "operator.read",
+  "operator.talk.secrets",
+  "operator.write",
+];
 
 // Tight charset so a bad client gets a 400 before we ever touch the
 // openclaw bundle. deviceId is base16 (sha256), publicKey is base64url —
@@ -97,7 +112,11 @@ export function createApproveDevicePairingRoute(deps = {}) {
 
     let pending;
     try {
-      const list = await mod.listDevicePairing();
+      // baseDir passed explicitly: the SDK otherwise resolves the state dir
+      // from process.env.OPENCLAW_STATE_DIR, which is absent in the wrapper
+      // process → it would read an empty ~/.openclaw instead of the gateway's
+      // STATE_DIR (/data/.openclaw) and never see the pending request.
+      const list = await mod.listDevicePairing(STATE_DIR);
       pending = (list?.pending || []).find(
         (p) => p.deviceId === deviceId && p.publicKey === publicKey
       );
@@ -119,14 +138,15 @@ export function createApproveDevicePairingRoute(deps = {}) {
     }
 
     try {
-      // callerScopes: ['operator.admin'] is the standard wrapper-side
-      // approval scope, sufficient to grant the BOOTSTRAP_HANDOFF_OPERATOR
-      // scope cohort openclaw bound to the pending. See
-      // src/lib/devicePairingNode.js's docstring for why this avoids
-      // openclaw v2026.5.x's scope-escalation refusal.
-      const result = await mod.approveDevicePairing(pending.requestId, {
-        callerScopes: ["operator.admin"],
-      });
+      // See APPROVE_CALLER_SCOPES above: the wrapper claims the full operator
+      // cohort (incl. the separate operator.approvals) so the approve gate
+      // passes without relying on operator.admin dominating other scopes.
+      // baseDir is passed for the same reason as the list call above.
+      const result = await mod.approveDevicePairing(
+        pending.requestId,
+        { callerScopes: APPROVE_CALLER_SCOPES },
+        STATE_DIR,
+      );
       if (!result) {
         // null = request resolved between list + approve (raced).
         console.log(

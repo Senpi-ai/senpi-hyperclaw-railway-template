@@ -45,24 +45,6 @@ if (!SETUP_PASSWORD) {
   console.error("================================================================");
 }
 
-// CONTROLUI_ALLOWED_ORIGINS is the contract the wrapper, the orchestrator,
-// and the agent-bridge all read to keep the Origin-pinning policy in lockstep.
-// When unset, gateway.js skips writing `gateway.controlUi.allowedOrigins` to
-// openclaw's config — which leaves openclaw open to ANY Origin and breaks
-// the device-pairing flow's expectation that the orchestrator's dial origin
-// matches a known allow-list entry. Warning only (not fail-fast) so legacy
-// deployments without the env var keep booting; the runtime breaks at the
-// first agent-bridge connect rather than silently mis-serving.
-if (!process.env.CONTROLUI_ALLOWED_ORIGINS?.trim()) {
-  console.warn("================================================================");
-  console.warn("WARNING: CONTROLUI_ALLOWED_ORIGINS is not configured.");
-  console.warn("  openclaw will accept ANY Origin on the Control UI WebSocket.");
-  console.warn("  The orchestrator-driven device-pairing flow will fail with");
-  console.warn('  "INVALID_REQUEST: origin not allowed" until this is set.');
-  console.warn("  Recommended: CONTROLUI_ALLOWED_ORIGINS=https://senpi.agent-bridge.invalid");
-  console.warn("================================================================");
-}
-
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 

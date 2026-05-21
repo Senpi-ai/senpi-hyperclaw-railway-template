@@ -18,6 +18,7 @@ import {
   configPath,
   isConfigured,
   SETUP_PASSWORD,
+  SENPI_MCP_URL,
 } from "../lib/config.js";
 import { tokenLogSafe, createRequireSetupAuth } from "../lib/auth.js";
 import { runCmd } from "../lib/runCmd.js";
@@ -31,6 +32,8 @@ import { bootstrapOpenClaw } from "../bootstrap.mjs";
 import { readCachedTelegramId } from "../lib/telegramId.js";
 import { createIssueBootstrapTokenRoute } from "./issue-bootstrap-token.js";
 import { createApproveDevicePairingRoute } from "./approve-device-pairing.js";
+import { shouldSetDangerousDeviceAuthFlag } from "../lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "../lib/allowedOrigins.js";
 
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const requireSetupAuth = createRequireSetupAuth(SETUP_PASSWORD);
@@ -321,16 +324,33 @@ export function createSetupRouter() {
             "true",
           ])
         );
-        await runCmd(
-          OPENCLAW_NODE,
-          clawArgs([
-            "config",
-            "set",
-            "--json",
-            "gateway.controlUi.dangerouslyDisableDeviceAuth",
-            "true",
-          ])
-        );
+        if (shouldSetDangerousDeviceAuthFlag()) {
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+              "true",
+            ])
+          );
+        } else {
+          // Lock-step with bootstrap.mjs / gateway.js / onboard.js: strip
+          // a stale `true` from any prior deploy so the wizard run honours
+          // the flipped env var.
+          await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "unset",
+              "gateway.controlUi.dangerouslyDisableDeviceAuth",
+            ])
+          );
+          console.log(
+            "[setup/run] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
+          );
+        }
         await runCmd(
           OPENCLAW_NODE,
           clawArgs([
@@ -341,6 +361,24 @@ export function createSetupRouter() {
             JSON.stringify(["127.0.0.1", "::1"]),
           ])
         );
+
+        // Origin allowlist for webchat-class clients (agent-bridge).
+        // See src/lib/allowedOrigins.js.
+        {
+          const allowed = resolveAllowedOrigins();
+          if (allowed.length > 0) {
+            await runCmd(
+              OPENCLAW_NODE,
+              clawArgs([
+                "config",
+                "set",
+                "--json",
+                "gateway.controlUi.allowedOrigins",
+                JSON.stringify(allowed),
+              ])
+            );
+          }
+        }
 
         const channelsHelp = await runCmd(
           OPENCLAW_NODE,
@@ -546,8 +584,7 @@ export function createSetupRouter() {
       fs.writeFileSync(senpiTokenPath, newToken);
       console.log("[senpi-token] Persisted token to config/senpi.token");
 
-      const mcpUrl =
-        process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+      const mcpUrl = SENPI_MCP_URL;
       const senpiConfig = JSON.stringify({
         url: mcpUrl,
         transport: "streamable-http",

@@ -7,7 +7,9 @@ import {
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
-import { TELEGRAM_USERNAME } from "./lib/config.js";
+import { TELEGRAM_USERNAME, SENPI_MCP_URL } from "./lib/config.js";
+import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
+import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -151,9 +153,19 @@ function patchOpenClawJson() {
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
-        // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
-        // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
-        dangerouslyDisableDeviceAuth: true,
+        // Opt-in via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true. Default
+        // OFF — the flag never engaged for internal clients or the bridge
+        // (different code paths); its only real effect was admitting a
+        // remote Control UI browser without pairing. See
+        // src/lib/dangerousAuthFlag.js for the full rationale.
+        ...(shouldSetDangerousDeviceAuthFlag()
+          ? { dangerouslyDisableDeviceAuth: true }
+          : {}),
+        // OpenClaw v2026.5.x rejects webchat-class connects unless their
+        // `Origin` header is on this allowlist. Built from AGENT_BRIDGE_ORIGIN
+        // + RAILWAY_PUBLIC_DOMAIN + localhost (+ optional extras via CSV).
+        // See src/lib/allowedOrigins.js.
+        allowedOrigins: resolveAllowedOrigins(),
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted
       trustedProxies: ["127.0.0.1", "::1"],
@@ -333,7 +345,7 @@ function setupSenpiMcp() {
   const cfgPath = path.join(STATE_DIR, "openclaw.json");
   if (!exists(cfgPath)) return;
 
-  const mcpUrl = process.env.SENPI_MCP_URL || "https://mcp.dev.senpi.ai/mcp";
+  const mcpUrl = SENPI_MCP_URL;
   const senpiToken = resolveSenpiToken();
 
   if (!senpiToken) {
