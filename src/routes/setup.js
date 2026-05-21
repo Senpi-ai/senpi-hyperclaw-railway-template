@@ -347,6 +347,9 @@ export function createSetupRouter() {
               "gateway.controlUi.dangerouslyDisableDeviceAuth",
             ])
           );
+          console.log(
+            "[setup/run] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
+          );
         }
         await runCmd(
           OPENCLAW_NODE,

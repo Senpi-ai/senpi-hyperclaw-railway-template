@@ -495,6 +495,9 @@ console.log(`[auto-onboard] directory created`);
           "gateway.controlUi.dangerouslyDisableDeviceAuth",
         ])
       );
+      console.log(
+        "[auto-onboard] dangerouslyDisableDeviceAuth omitted (default); set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in for browser Control UI"
+      );
     }
     await runCmd(
       OPENCLAW_NODE,

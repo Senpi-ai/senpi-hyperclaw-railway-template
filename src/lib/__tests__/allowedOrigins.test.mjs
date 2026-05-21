@@ -101,3 +101,28 @@ test("resolveAllowedOrigins: filters empty CSV slots", () => {
   assert.ok(out.includes("https://b.example"));
   assert.ok(out.every((o) => o !== "" && o.trim() !== ""));
 });
+
+test("resolveAllowedOrigins: wildcard '*' is preserved verbatim", () => {
+  // OpenClaw treats `*` as any-origin. Operators who set
+  // AGENT_BRIDGE_ALLOWED_ORIGINS=* (e.g. for fully-open dev mode) must
+  // get the literal character through to the openclaw config — the
+  // resolver must not URL-validate or otherwise rewrite it.
+  const out = resolveAllowedOrigins({
+    AGENT_BRIDGE_ALLOWED_ORIGINS: "*",
+  });
+  assert.ok(out.includes("*"));
+});
+
+test("resolveAllowedOrigins: RAILWAY_PUBLIC_DOMAIN whitespace is trimmed", () => {
+  // Mirrors the AGENT_BRIDGE_ORIGIN trim test above. A misconfigured
+  // RAILWAY_PUBLIC_DOMAIN with surrounding whitespace must not produce
+  // a malformed `https:// app.up.railway.app` entry in the allowlist.
+  const out = resolveAllowedOrigins({
+    RAILWAY_PUBLIC_DOMAIN: "  app.up.railway.app  ",
+  });
+  assert.ok(out.includes("https://app.up.railway.app"));
+  assert.ok(
+    out.every((o) => o === o.trim()),
+    "all entries should be whitespace-clean",
+  );
+});
