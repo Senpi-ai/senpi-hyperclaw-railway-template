@@ -153,19 +153,18 @@ function patchOpenClawJson() {
     gateway: {
       controlUi: {
         allowInsecureAuth: true,
-        // Headless deployment: no device to pair; internal clients (Telegram provider, cron, session WS)
-        // must connect with token only. Prevents [ws] code=1008 reason=connect failed / "pairing required".
-        // Hatch: set OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false to omit the
-        // flag (only safe when remote Control UI access isn't needed — see Quirk #7).
+        // Opt-in via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true. Default
+        // OFF — the flag never engaged for internal clients or the bridge
+        // (different code paths); its only real effect was admitting a
+        // remote Control UI browser without pairing. See
+        // src/lib/dangerousAuthFlag.js for the full rationale.
         ...(shouldSetDangerousDeviceAuthFlag()
           ? { dangerouslyDisableDeviceAuth: true }
           : {}),
-        // OpenClaw v2026.5.x rejects webchat-class connections (including the
-        // agent-bridge in Senpi-ai/agent-bridge `v3/go-rewrite`) with
-        // CONTROL_UI_ORIGIN_NOT_ALLOWED unless the client's Origin header is
-        // listed here. Default includes the Railway public domain + localhost
-        // dev fallbacks; AGENT_BRIDGE_ALLOWED_ORIGINS adds more (CSV, `*`
-        // accepted as wildcard).
+        // OpenClaw v2026.5.x rejects webchat-class connects unless their
+        // `Origin` header is on this allowlist. Built from AGENT_BRIDGE_ORIGIN
+        // + RAILWAY_PUBLIC_DOMAIN + localhost (+ optional extras via CSV).
+        // See src/lib/allowedOrigins.js.
         allowedOrigins: resolveAllowedOrigins(),
       },
       // Trust loopback so reverse-proxy and internal clients (e.g. Telegram provider) are accepted

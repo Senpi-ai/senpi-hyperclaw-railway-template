@@ -483,10 +483,10 @@ console.log(`[auto-onboard] directory created`);
         ])
       );
     } else {
-      // Lock-step with bootstrap.mjs / gateway.js / setup.js: strip any
-      // stale `true` left by a previous deploy so flipping the env var
-      // actually takes effect. No-op on a fresh config (this is a
-      // not-configured auto-onboard path), kept for parity.
+      // Lock-step with bootstrap.mjs / gateway.js / setup.js: strip a
+      // stale `true` from any prior deploy so flipping the env var takes
+      // effect. No-op on a fresh config (this is a not-configured
+      // auto-onboard path), kept for parity.
       await runCmd(
         OPENCLAW_NODE,
         clawArgs([
@@ -510,8 +510,8 @@ console.log(`[auto-onboard] directory created`);
       ])
     );
 
-    // Origin allowlist for webchat-class clients (agent-bridge). See
-    // src/lib/allowedOrigins.js for the rationale.
+    // Origin allowlist for webchat-class clients (agent-bridge).
+    // See src/lib/allowedOrigins.js.
     {
       const allowed = resolveAllowedOrigins();
       if (allowed.length > 0) {

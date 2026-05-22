@@ -19,10 +19,6 @@ import {
 } from "./lib/config.js";
 import { tokenLogSafe } from "./lib/auth.js";
 import { runCmd } from "./lib/runCmd.js";
-import {
-  startAutoApprovalLoop,
-  stopAutoApprovalLoop,
-} from "./lib/deviceAuth.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
 
@@ -215,9 +211,9 @@ export async function startGateway(gatewayToken) {
       ])
     );
   } else {
-    // Hatch: operator opted out via OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=false.
-    // Strip any pre-existing setting so a redeploy that flips the var actually
-    // takes effect — otherwise the previous `true` would persist in openclaw.json.
+    // Strip any pre-existing setting so a redeploy that flips
+    // OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH actually takes effect —
+    // otherwise a stale `true` persists in openclaw.json.
     await runCmd(
       OPENCLAW_NODE,
       clawArgs([
@@ -227,10 +223,10 @@ export async function startGateway(gatewayToken) {
       ])
     );
   }
-  // Origin allowlist (gateway.controlUi.allowedOrigins) — required for the
-  // bridge's webchat-class connect to pass OpenClaw v2026.5.x's origin
-  // check. Re-resolved on every gateway start so a redeploy with a new
-  // RAILWAY_PUBLIC_DOMAIN or AGENT_BRIDGE_ALLOWED_ORIGINS picks up.
+
+  // Origin allowlist for webchat-class clients (agent-bridge). Re-resolved
+  // on every gateway start so a redeploy with a new AGENT_BRIDGE_ORIGIN /
+  // RAILWAY_PUBLIC_DOMAIN / AGENT_BRIDGE_ALLOWED_ORIGINS picks up.
   const allowed = resolveAllowedOrigins();
   if (allowed.length > 0) {
     await runCmd(
@@ -249,17 +245,14 @@ export async function startGateway(gatewayToken) {
   const devAuth = verify?.gateway?.controlUi?.dangerouslyDisableDeviceAuth;
   if (setDangerousFlag) {
     console.log(
-      `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (headless); verified: ${devAuth}`
+      `[gateway] Set gateway.controlUi.allowInsecureAuth and dangerouslyDisableDeviceAuth=true (opt-in); verified: ${devAuth}`
     );
     if (devAuth !== true) {
       console.warn(
-        `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — cron/agent may get 1008 pairing required`
+        `[gateway] WARNING: dangerouslyDisableDeviceAuth is ${devAuth} — opt-in did not take effect`
       );
     }
   } else {
-    // Default since 2026-05-16: flag is intentionally omitted. Set
-    // OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true to opt back in
-    // (see CLAUDE.md Quirk #15).
     console.log(
       `[gateway] dangerouslyDisableDeviceAuth omitted (default); verified: ${devAuth === undefined ? "absent" : devAuth}`
     );
@@ -344,7 +337,6 @@ export async function ensureGatewayRunning(gatewayToken) {
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
-      startAutoApprovalLoop();
     })().finally(() => {
       gatewayStarting = null;
     });
@@ -359,7 +351,6 @@ export async function ensureGatewayRunning(gatewayToken) {
  */
 export async function restartGateway(gatewayToken) {
   console.log("[gateway] Restarting gateway...");
-  stopAutoApprovalLoop();
 
   if (gatewayProc) {
     console.log("[gateway] Killing wrapper-managed gateway process");

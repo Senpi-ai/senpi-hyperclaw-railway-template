@@ -1,14 +1,13 @@
 /**
  * Tests for the OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH env-var hatch.
  *
- * Default flipped 2026-05-16 (PR #59): we now omit
- * `gateway.controlUi.dangerouslyDisableDeviceAuth` by default. The flag
- * never engaged for internal clients (different code path) and never
- * engaged for the bridge (`isWebchat`, not `isControlUi`). Its only
- * real effect was admitting a remote Control UI browser without
- * pairing — a debugging convenience we drop in favour of `railway ssh`
- * + the openclaw CLI. Operators who still want browser Control UI can
- * opt back in with `OPENCLAW_DANGEROUSLY_DISABLE_DEVICE_AUTH=true`.
+ * Default is OFF: omit `gateway.controlUi.dangerouslyDisableDeviceAuth`
+ * from openclaw.json. The flag never engaged for internal clients
+ * (different code path) and never engaged for the bridge (isWebchat,
+ * not isControlUi). Its only real effect was admitting a remote Control
+ * UI browser without pairing — a debugging convenience that operators
+ * can re-enable via this env var, otherwise recover from via
+ * `railway ssh` + the openclaw CLI.
  *
  * See `src/lib/dangerousAuthFlag.js` for the full rationale.
  *
@@ -65,10 +64,9 @@ test("trims whitespace and lowercases input", () => {
   );
 });
 
-test("unrecognized values (typos, garbage) → false (safe default)", () => {
-  // The new default is OFF, so any unrecognised value also stays OFF.
-  // A typo doesn't accidentally re-enable a `dangerously*` flag — fail
-  // closed rather than open.
+test("unrecognized values (typos, garbage) → false (fail-closed)", () => {
+  // Any unrecognised value stays OFF. A typo doesn't accidentally
+  // re-enable a `dangerously*` flag — fail closed rather than open.
   for (const val of ["garbage", "TRUE_TYPO", "true!", "1.0", ""]) {
     assert.equal(
       shouldSetDangerousDeviceAuthFlag({
