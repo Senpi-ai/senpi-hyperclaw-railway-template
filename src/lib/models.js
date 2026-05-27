@@ -9,7 +9,7 @@
  */
 export const DESIRED_MODELS = {
   // ── Anthropic ──
-  "anthropic/claude-opus-4-6": { alias: "Opus 4.6" },
+  "anthropic/claude-opus-4-7": { alias: "Opus 4.7" },
   "anthropic/claude-sonnet-4-6": { alias: "Sonnet 4.6" },
   "anthropic/claude-sonnet-4-5": { alias: "Sonnet 4.5" },
   "anthropic/claude-opus-4-5": { alias: "Opus 4.5" },
@@ -190,7 +190,7 @@ export const PROVIDER_DEFAULTS = [
  * env var matched (used by auto-onboard with AI_PROVIDER + AI_API_KEY).
  */
 export const AI_PROVIDER_MODEL_MAP = {
-  anthropic: "anthropic/claude-opus-4-6",
+  anthropic: "anthropic/claude-opus-4-7",
   openai: "openai/gpt-5.2",
   gemini: "google/gemini-2.5-pro",
   google: "google/gemini-2.5-pro",
