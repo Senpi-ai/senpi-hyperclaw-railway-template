@@ -164,6 +164,7 @@ export const DESIRED_MODELS = {
   "litellm/minimax-m2.5":      { alias: "MiniMax M2.5 (LiteLLM)" },
   "litellm/ministral-14b":     { alias: "Ministral 14B (LiteLLM)" },
   "litellm/gemma-4-31b-it":    { alias: "Gemma 4 31B (LiteLLM)" },
+  "litellm/qwen_qwen3_6-35b-a3b-fp8":    { alias: "QWEN 3.6 (LiteLLM)" },
 };
 
 /**
