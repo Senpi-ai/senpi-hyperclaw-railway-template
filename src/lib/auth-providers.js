@@ -170,7 +170,7 @@ export const AUTH_PROVIDERS = [
           { id: "minimax-m2.5", label: "MiniMax M2.5 (via OpenRouter)", contextWindow: 1000000, input: ["text"], reasoning: true },
           { id: "ministral-14b", label: "Ministral 14B (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
           { id: "gemma-4-31b-it", label: "gemma-4-31b-it (via Venice)", contextWindow: 256000, input: ["text"], reasoning: true },
-          { id: "qwen_qwen3_6-35b-a3b-fp8", label: "qwen_qwen3_6-35b-a3b-fp8 (vertex)", contextWindow: 256000, input: ["text", "image"], reasoning: true },
+          { id: "qwen-senpi", label: "qwen-senpi", contextWindow: 262144, input: ["text", "image"], reasoning: true },          
         ],
         defaultModelId: "senpi",
       },
