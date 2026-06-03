@@ -171,6 +171,7 @@ export const AUTH_PROVIDERS = [
           { id: "ministral-14b", label: "Ministral 14B (via OpenRouter)", contextWindow: 128000, input: ["text"], reasoning: true },
           { id: "gemma-4-31b-it", label: "gemma-4-31b-it (via Venice)", contextWindow: 256000, input: ["text"], reasoning: true },
           { id: "qwen-senpi", label: "qwen-senpi", contextWindow: 262144, input: ["text", "image"], reasoning: true },          
+          { id: "qwen3.6-35b-FP8", label: "qwen3.6-35b-FP8", contextWindow: 262144, input: ["text", "image"], reasoning: true },          
         ],
         defaultModelId: "senpi",
       },
