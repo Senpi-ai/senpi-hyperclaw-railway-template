@@ -1,4 +1,4 @@
-# Openclaw Railway Template (1‑click deploy)
+# Openclaw Railway Template (1‑click deploy) [DEPRECATED, use senpi platform to launch agent]
 
 This repo packages **Openclaw** for Railway with **zero-touch auto-configuration**. Set your environment variables, deploy, and your bot is ready — no manual setup required.
 
