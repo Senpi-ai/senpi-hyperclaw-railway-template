@@ -10,6 +10,7 @@ import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } fro
 import { TELEGRAM_USERNAME, SENPI_MCP_URL } from "./lib/config.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
+import { decideRuntimeInstall, normalizeNonce } from "./lib/runtimeInstallDecision.mjs";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -25,28 +26,32 @@ const STATE_SKILLS_DIR = path.join(STATE_DIR, "skills");
  * npm install spec stays scoped.
  */
 const SENPI_RUNTIME_PLUGIN_ID = "runtime";
-// `integration/openclaw-v2026.5.7-full` interim branch installs from the DEV
-// npm channel (`@senpi/runtime`) while we ship openclaw-2026.5.x compatibility
-// fixes that haven't reached the prod channel (`@senpi-ai/runtime`) yet. The
-// plugin's `resolvePackageName()` (see senpi-trading-runtime/runtime/auto-update/)
-// introspects this so auto-update follows the same npm channel — no flip-flop
-// with the prod line. Revert to `@senpi-ai/runtime` at cutover when the
-// upgrade work merges to wrapper main and the prod plugin ships the matching
-// patches (resolvePackageName + manifest commandAliases/activation).
+// Canonical package is the PROD scope `@senpi-ai/runtime` (trading_runtime
+// package.json name; npm `latest`). The dev-only `@senpi/` scope carries
+// throwaway branch builds and must never be the default — a scope mismatch
+// between the install spec and the on-disk path probe makes every spec
+// comparison permanently "mismatched" and wipes/reinstalls on every boot
+// (fleet-update spec §4.2).
 //
-// Two constants, because OpenClaw v2026.5.x refuses to install a prerelease
-// without an explicit dist-tag — versions on this dev channel carry a
-// `-dev.<branch>.<ts>` suffix, so we ask for `@senpi/runtime@beta` (the
-// dist-tag the openclaw-upgrade/main publish-dev job tags as). The package
-// still lands on disk under its npm name, so the path probe needs the bare
-// name (without `@beta`) to find the install directory.
-const SENPI_RUNTIME_NPM_NAME = "@senpi/runtime";
-// TEMPORARY (sarvesh, 2026-05-20): pointing at a throwaway CI publish from
-// senpi-trading-runtime branch `test/spans-on-upgrade-sarvesh` (feat/spans-runtime
-// merged onto openclaw-upgrade/main) so this deploy picks up the spans/telemetry
-// runtime without waiting for the spans work to land in @beta. Revert to
-// "@senpi/runtime@beta" when telemetry merges to openclaw-upgrade/main upstream.
-const SENPI_RUNTIME_NPM_SPEC = "@senpi/runtime@branch-test-spans-on-upgrade-sarvesh";
+// Both are env-driven so the fleet-update tool can point a deploy at a specific
+// spec (e.g. a pinned version or a dev branch build) without a template change:
+//   - SENPI_RUNTIME_NPM_SPEC  — what `openclaw plugins install` receives.
+//   - SENPI_RUNTIME_NPM_NAME  — the bare npm name the managed install path
+//     embeds (STATE_DIR/npm/node_modules/<name>). The install spec may carry a
+//     dist-tag/version suffix, but the package always lands on disk under its
+//     name, so the path probe needs the name without any suffix.
+// Keep the two in lock-step end-to-end: a deploy that overrides the spec's scope
+// (e.g. a `@senpi/…` dev build) MUST also override the name, or the probe looks
+// under the wrong scope. The full node_modules wipe (see
+// installSenpiRuntimePluginIfNeeded) makes leftovers under a stale scope harmless.
+const SENPI_RUNTIME_NPM_NAME = process.env.SENPI_RUNTIME_NPM_NAME?.trim() || "@senpi-ai/runtime";
+const SENPI_RUNTIME_NPM_SPEC = process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
+// Operator-controlled one-shot reinstall latch. When this differs from the
+// value recorded in the install record, bootstrap wipes the ENTIRE managed
+// node_modules tree and reinstalls (forcing transitive deps to re-resolve /
+// downgrade — the motivating incident, spec §2). Absent/empty = never force;
+// the value is recorded after acting so the same value no-ops on later boots.
+const SENPI_RUNTIME_REINSTALL_NONCE = process.env.SENPI_RUNTIME_REINSTALL_NONCE;
 
 /**
  * Skill that provides the agent with documentation on how to use the @senpi-ai/runtime
@@ -466,68 +471,106 @@ function installSenpiRuntimePluginIfNeeded() {
   // Probe both install paths used by different OpenClaw versions:
   //   - 2026.5.x (managed npm):  STATE_DIR/npm/node_modules/@senpi-ai/runtime
   //   - 2026.2.x (legacy extensions): STATE_DIR/extensions/runtime
-  // The first one that exists tells us the plugin is already installed.
+  // The first one that exists tells us the plugin is already installed. The
+  // managed path embeds SENPI_RUNTIME_NPM_NAME: agents previously installed
+  // under a different scope (e.g. the dev `@senpi/runtime`) probe as "not
+  // installed" under the new name — but the install RECORD (keyed by the
+  // manifest id "runtime", not the npm name) survives, so the spec comparison
+  // below still fires and the full-tree wipe removes the stale-scope leftovers.
   const managedPluginDir = path.join(STATE_DIR, "npm", "node_modules", SENPI_RUNTIME_NPM_NAME);
   const legacyPluginDir = path.join(STATE_DIR, "extensions", SENPI_RUNTIME_PLUGIN_ID);
   const pluginDir = exists(managedPluginDir) ? managedPluginDir : legacyPluginDir;
 
-  // Backfill: if the plugin directory exists but the install record is missing,
-  // `openclaw plugins update runtime` fails with "No install record for runtime"
-  // and `openclaw plugins install` refuses with "plugin already exists".
-  // Write the minimal record (source + spec + installPath) that update requires.
-  if (exists(pluginDir)) {
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-    const installRecord = cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID];
-    const currentSpec = installRecord?.spec;
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  let installRecord = cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID];
 
-    // Spec-mismatch reinstall: if the install record's spec no longer matches
-    // SENPI_RUNTIME_NPM_SPEC (e.g. dist-tag flipped @beta → branch-test-*),
-    // tear down the install dir + record so the install block below replaces
-    // it. Without this, `exists(pluginDir)` short-circuits and the volume's
-    // stale install survives across redeploys. Skipped when no install record
-    // exists yet (handled by backfill path below) or when specs match (fast
-    // path: nothing to do). Filesystem-level removal — does not invoke the
-    // plugin's own uninstall hook, so runtime state under STATE_DIR/senpi-state
-    // and channel/gateway config in openclaw.json are preserved.
-    if (currentSpec && currentSpec !== SENPI_RUNTIME_NPM_SPEC) {
-      console.log(
-        `[bootstrap] installed spec (${currentSpec}) differs from configured ` +
-        `(${SENPI_RUNTIME_NPM_SPEC}); wiping ${pluginDir} + install record to force reinstall`
+  // Backfill: a plugin dir on disk with no install record is a legacy volume
+  // (predates the record) — `openclaw plugins update runtime` would fail with
+  // "No install record for runtime" and `plugins install` refuses with "plugin
+  // already exists". Write the minimal record (at the *current* spec, no nonce)
+  // so the decision below has something to compare. This keeps a matching-spec,
+  // no-nonce boot a cheap no-op instead of a needless reinstall; if a nonce is
+  // set, the decision still fires a wipe (recorded nonce is empty).
+  if (!installRecord && exists(pluginDir)) {
+    let version;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
+      version = pkg.version;
+    } catch { /* best-effort */ }
+    cfg.plugins = cfg.plugins || {};
+    cfg.plugins.installs = cfg.plugins.installs || {};
+    cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
+      source: "npm",
+      spec: SENPI_RUNTIME_NPM_SPEC,
+      installPath: pluginDir,
+      ...(version ? { version } : {}),
+      installedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    installRecord = cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+    console.log(
+      `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
+      (version ? ` (v${version})` : "")
+    );
+  }
+
+  // Decide what to do purely from the recorded state + configured env.
+  // See src/lib/runtimeInstallDecision.mjs for the trigger semantics.
+  const decision = decideRuntimeInstall({
+    record: {
+      exists: !!installRecord,
+      spec: installRecord?.spec,
+      nonce: installRecord?.nonce,
+    },
+    env: {
+      spec: SENPI_RUNTIME_NPM_SPEC,
+      nonce: SENPI_RUNTIME_REINSTALL_NONCE,
+    },
+  });
+
+  if (decision.action === "none") {
+    return;
+  }
+
+  if (decision.action === "wipeAndInstall") {
+    // Remove the ENTIRE managed node_modules tree — not just the plugin dir —
+    // so hoisted transitive deps re-resolve from scratch and can downgrade
+    // (the motivating incident, spec §2: npm never proactively downgrades a
+    // surviving dep that still satisfies a semver range). Name-agnostic, so it
+    // also cleans up any stale install left under a different scope.
+    //
+    // Scope safety: the wipe target is STATE_DIR/npm/node_modules. User
+    // strategies (STATE_DIR/senpi-state/), sessions (STATE_DIR/agents/), the
+    // workspace (/data/workspace), and device pairing state are all SIBLINGS,
+    // never under npm/ — the rm path cannot reach them. Assert it before rm.
+    const npmDir = path.join(STATE_DIR, "npm");
+    const nodeModulesDir = path.join(npmDir, "node_modules");
+    const rel = path.relative(STATE_DIR, nodeModulesDir);
+    if (rel !== path.join("npm", "node_modules")) {
+      // Defensive: never rm anything outside STATE_DIR/npm/node_modules.
+      console.error(
+        `[bootstrap] refusing to wipe unexpected path ${nodeModulesDir} (rel=${rel}); skipping reinstall`
       );
-      try {
-        fs.rmSync(pluginDir, { recursive: true, force: true });
-      } catch (err) {
-        console.error(`[bootstrap] failed to remove ${pluginDir}:`, err?.message ?? err);
-      }
-      if (cfg.plugins?.installs) {
-        delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
-        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-      }
-      // Fall through to the install block below.
-    } else {
-      if (!installRecord) {
-        let version;
-        try {
-          const pkg = JSON.parse(fs.readFileSync(path.join(pluginDir, "package.json"), "utf8"));
-          version = pkg.version;
-        } catch { /* best-effort */ }
-        cfg.plugins = cfg.plugins || {};
-        cfg.plugins.installs = cfg.plugins.installs || {};
-        cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
-          source: "npm",
-          spec: SENPI_RUNTIME_NPM_SPEC,
-          installPath: pluginDir,
-          ...(version ? { version } : {}),
-          installedAt: new Date().toISOString(),
-        };
-        fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-        console.log(
-          `[bootstrap] backfilled plugins.installs.${SENPI_RUNTIME_PLUGIN_ID} record` +
-          (version ? ` (v${version})` : "")
-        );
-      }
       return;
     }
+    console.log(
+      `[bootstrap] runtime reinstall triggered (${decision.reason}); ` +
+      `wiping entire managed plugin tree ${nodeModulesDir} ` +
+      `(preserved: senpi-state/ strategies, agents/ sessions, workspace, device pairing)`
+    );
+    try {
+      fs.rmSync(nodeModulesDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`[bootstrap] failed to remove ${nodeModulesDir}:`, err?.message ?? err);
+    }
+    // Drop the install record so a partial/failed install can't leave a stale
+    // spec/nonce recorded; it is rewritten after a successful install below.
+    if (cfg.plugins?.installs) {
+      delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    }
+  } else {
+    console.log(`[bootstrap] runtime install (${decision.reason})`);
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
@@ -535,11 +578,11 @@ function installSenpiRuntimePluginIfNeeded() {
   // flags any plugin file whose compiled JS contains both a spawn/exec call
   // site AND the literal "child_process" in the same file. We used to pass
   // --dangerously-force-unsafe-install here to bypass the gate. As of
-  // @senpi/runtime 1.2.0-dev (after the safe-spawn refactor — see the
-  // plugin's src/utils/safe-spawn.ts) the gate no longer matches, so the
-  // bypass flag is gone. Leaving it OFF here also surfaces any future
-  // regression: if a future plugin version reintroduces the literal,
-  // install fails loudly instead of silently bypassing.
+  // the runtime plugin's safe-spawn refactor (see the plugin's
+  // src/utils/safe-spawn.ts) the gate no longer matches, so the bypass flag is
+  // gone. Leaving it OFF here also surfaces any future regression: if a future
+  // plugin version reintroduces the literal, install fails loudly instead of
+  // silently bypassing.
   const result = spawnSync(
     "openclaw",
     ["plugins", "install", SENPI_RUNTIME_NPM_SPEC],
@@ -557,6 +600,42 @@ function installSenpiRuntimePluginIfNeeded() {
     return;
   }
   console.log(`[bootstrap] ${SENPI_RUNTIME_NPM_SPEC} installed via openclaw plugins install`);
+
+  // Record BOTH the applied spec and the applied nonce so future boots can
+  // compare and no-op. Re-read the config: `openclaw plugins install` may have
+  // written its own install record, and we must not clobber it — merge on top.
+  const appliedNonce = normalizeNonce(SENPI_RUNTIME_REINSTALL_NONCE);
+  let installedVersion;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(managedPluginDir, "package.json"), "utf8"));
+    installedVersion = pkg.version;
+  } catch { /* best-effort */ }
+  try {
+    const postCfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    postCfg.plugins = postCfg.plugins || {};
+    postCfg.plugins.installs = postCfg.plugins.installs || {};
+    const existing = postCfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] || {};
+    postCfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID] = {
+      source: "npm",
+      ...existing,
+      spec: SENPI_RUNTIME_NPM_SPEC,
+      nonce: appliedNonce,
+      installPath: existing.installPath || managedPluginDir,
+      ...(installedVersion ? { version: installedVersion } : {}),
+      installedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(cfgPath, JSON.stringify(postCfg, null, 2));
+  } catch (err) {
+    console.error(`[bootstrap] failed to record install for ${SENPI_RUNTIME_PLUGIN_ID}:`, err?.message ?? err);
+  }
+
+  // Machine-parseable verification line — the fleet-update tool greps
+  // deployment logs for this (spec §4.3, §6.4). Keep the format stable:
+  //   SENPI_RUNTIME_INSTALLED spec=<spec> version=<version> nonce=<nonce-or-empty>
+  console.log(
+    `SENPI_RUNTIME_INSTALLED spec=${SENPI_RUNTIME_NPM_SPEC} ` +
+    `version=${installedVersion ?? ""} nonce=${appliedNonce}`
+  );
 }
 
 /**
