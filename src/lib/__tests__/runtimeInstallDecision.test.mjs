@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import {
   decideRuntimeInstall,
   normalizeNonce,
+  NPM_WIPE_TARGETS,
 } from "../runtimeInstallDecision.mjs";
 
 const SPEC = "@senpi-ai/runtime";
@@ -141,4 +142,34 @@ test("normalizeNonce: absent/empty/whitespace collapse to empty string", () => {
   assert.equal(normalizeNonce("   "), "");
   assert.equal(normalizeNonce("  x "), "x");
   assert.equal(normalizeNonce(123), "123");
+});
+
+test("NPM_WIPE_TARGETS: node_modules + lockfile + manifest, nothing else", () => {
+  // The lockfile is load-bearing: `openclaw plugins install` runs npm install
+  // with npm_config_package_lock=true (openclaw v2026.5.7
+  // src/plugins/install.ts:1375-1398), so a surviving package-lock.json
+  // re-pins the exact stale transitive-dep tree and the wipe accomplishes
+  // nothing. The manifest merges dependencies on upsert
+  // (src/infra/npm-managed-root.ts:184-224), so a stale old-scope entry would
+  // be reinstalled alongside the new one. All three are regenerated on
+  // install. Changing this set requires re-verifying regeneration against the
+  // pinned openclaw source — see the NPM_WIPE_TARGETS doc comment.
+  assert.deepEqual(
+    [...NPM_WIPE_TARGETS].toSorted(),
+    ["node_modules", "package-lock.json", "package.json"],
+  );
+});
+
+test("NPM_WIPE_TARGETS: plain names only — no separators or traversal segments", () => {
+  // bootstrap.mjs joins each target directly under STATE_DIR/npm and asserts
+  // the resolved path stays there; keep the inputs trivially safe too.
+  for (const target of NPM_WIPE_TARGETS) {
+    assert.ok(!target.includes("/") && !target.includes("\\"), target);
+    assert.notEqual(target, "..");
+    assert.notEqual(target, ".");
+  }
+});
+
+test("NPM_WIPE_TARGETS is frozen (no runtime mutation of the wipe set)", () => {
+  assert.ok(Object.isFrozen(NPM_WIPE_TARGETS));
 });

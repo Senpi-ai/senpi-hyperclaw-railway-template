@@ -10,7 +10,7 @@ import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } fro
 import { TELEGRAM_USERNAME, SENPI_MCP_URL } from "./lib/config.js";
 import { shouldSetDangerousDeviceAuthFlag } from "./lib/dangerousAuthFlag.js";
 import { resolveAllowedOrigins } from "./lib/allowedOrigins.js";
-import { decideRuntimeInstall, normalizeNonce } from "./lib/runtimeInstallDecision.mjs";
+import { decideRuntimeInstall, normalizeNonce, NPM_WIPE_TARGETS } from "./lib/runtimeInstallDecision.mjs";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -42,15 +42,16 @@ const SENPI_RUNTIME_PLUGIN_ID = "runtime";
 //     name, so the path probe needs the name without any suffix.
 // Keep the two in lock-step end-to-end: a deploy that overrides the spec's scope
 // (e.g. a `@senpi/…` dev build) MUST also override the name, or the probe looks
-// under the wrong scope. The full node_modules wipe (see
+// under the wrong scope. The managed npm root wipe (see
 // installSenpiRuntimePluginIfNeeded) makes leftovers under a stale scope harmless.
 const SENPI_RUNTIME_NPM_NAME = process.env.SENPI_RUNTIME_NPM_NAME?.trim() || "@senpi-ai/runtime";
 const SENPI_RUNTIME_NPM_SPEC = process.env.SENPI_RUNTIME_NPM_SPEC?.trim() || "@senpi-ai/runtime";
 // Operator-controlled one-shot reinstall latch. When this differs from the
-// value recorded in the install record, bootstrap wipes the ENTIRE managed
-// node_modules tree and reinstalls (forcing transitive deps to re-resolve /
-// downgrade — the motivating incident, spec §2). Absent/empty = never force;
-// the value is recorded after acting so the same value no-ops on later boots.
+// value recorded in the install record, bootstrap wipes the managed npm root
+// artifacts (node_modules + lockfile + manifest, see NPM_WIPE_TARGETS) and
+// reinstalls, forcing transitive deps to re-resolve / downgrade — the
+// motivating incident, spec §2. Absent/empty = never force; the value is
+// recorded after acting so the same value no-ops on later boots.
 const SENPI_RUNTIME_REINSTALL_NONCE = process.env.SENPI_RUNTIME_REINSTALL_NONCE;
 
 /**
@@ -533,35 +534,49 @@ function installSenpiRuntimePluginIfNeeded() {
   }
 
   if (decision.action === "wipeAndInstall") {
-    // Remove the ENTIRE managed node_modules tree — not just the plugin dir —
-    // so hoisted transitive deps re-resolve from scratch and can downgrade
-    // (the motivating incident, spec §2: npm never proactively downgrades a
-    // surviving dep that still satisfies a semver range). Name-agnostic, so it
-    // also cleans up any stale install left under a different scope.
+    // Remove the managed npm root artifacts (NPM_WIPE_TARGETS: node_modules,
+    // package-lock.json, package.json) — not just the plugin dir — so hoisted
+    // transitive deps re-resolve from scratch and can downgrade (the motivating
+    // incident, spec §2: npm never proactively downgrades a surviving dep that
+    // still satisfies a semver range). Wiping node_modules ALONE is not enough:
+    // `openclaw plugins install` runs plain `npm install` in STATE_DIR/npm with
+    // the lockfile honored (openclaw v2026.5.7 src/plugins/install.ts:1375-1398,
+    // packageLock: true → npm_config_package_lock=true in
+    // src/infra/safe-package-install.ts), so a surviving package-lock.json
+    // re-pins the exact stale tree; and the managed package.json merges
+    // dependencies on upsert (src/infra/npm-managed-root.ts:184-224), so a
+    // stale old-scope entry would be reinstalled alongside the new one.
+    // OpenClaw regenerates all three on install — see NPM_WIPE_TARGETS docs.
+    // Name-agnostic, so it also cleans up any stale install left under a
+    // different scope.
     //
-    // Scope safety: the wipe target is STATE_DIR/npm/node_modules. User
+    // Scope safety: every wipe target lives directly under STATE_DIR/npm. User
     // strategies (STATE_DIR/senpi-state/), sessions (STATE_DIR/agents/), the
-    // workspace (/data/workspace), and device pairing state are all SIBLINGS,
-    // never under npm/ — the rm path cannot reach them. Assert it before rm.
+    // workspace (/data/workspace), and device pairing state are all SIBLINGS
+    // of npm/, never under it — the rm paths cannot reach them. Assert before rm.
     const npmDir = path.join(STATE_DIR, "npm");
-    const nodeModulesDir = path.join(npmDir, "node_modules");
-    const rel = path.relative(STATE_DIR, nodeModulesDir);
-    if (rel !== path.join("npm", "node_modules")) {
-      // Defensive: never rm anything outside STATE_DIR/npm/node_modules.
+    const wipePaths = NPM_WIPE_TARGETS.map((name) => path.join(npmDir, name));
+    const badPath = wipePaths.find(
+      (p) => path.relative(STATE_DIR, p) !== path.join("npm", path.basename(p))
+    );
+    if (badPath) {
+      // Defensive: never rm anything outside STATE_DIR/npm/<target>.
       console.error(
-        `[bootstrap] refusing to wipe unexpected path ${nodeModulesDir} (rel=${rel}); skipping reinstall`
+        `[bootstrap] refusing to wipe unexpected path ${badPath}; skipping reinstall`
       );
       return;
     }
     console.log(
       `[bootstrap] runtime reinstall triggered (${decision.reason}); ` +
-      `wiping entire managed plugin tree ${nodeModulesDir} ` +
+      `wiping managed npm root artifacts under ${npmDir}: ${NPM_WIPE_TARGETS.join(", ")} ` +
       `(preserved: senpi-state/ strategies, agents/ sessions, workspace, device pairing)`
     );
-    try {
-      fs.rmSync(nodeModulesDir, { recursive: true, force: true });
-    } catch (err) {
-      console.error(`[bootstrap] failed to remove ${nodeModulesDir}:`, err?.message ?? err);
+    for (const target of wipePaths) {
+      try {
+        fs.rmSync(target, { recursive: true, force: true });
+      } catch (err) {
+        console.error(`[bootstrap] failed to remove ${target}:`, err?.message ?? err);
+      }
     }
     // Drop the install record so a partial/failed install can't leave a stale
     // spec/nonce recorded; it is rewritten after a successful install below.
