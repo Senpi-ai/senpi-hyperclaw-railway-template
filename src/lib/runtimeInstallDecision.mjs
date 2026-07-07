@@ -19,12 +19,19 @@
  *      boot no-ops, and removing the nonce from the env after it was recorded
  *      also no-ops (empty configured nonce never triggers).
  *
- * A spec change (or nonce trigger) on an existing install returns
- * `wipeAndInstall`: the caller wipes the managed npm root artifacts listed in
- * NPM_WIPE_TARGETS (node_modules AND the lockfile/manifest — see below) so
- * transitive deps re-resolve from scratch and can downgrade. A missing install
- * record returns `install` (fresh volume / scope change with no record to
- * compare) — nothing to wipe.
+ * Every trigger — spec change, nonce change, or a MISSING install record —
+ * returns `wipeAndInstall`: the caller wipes the managed npm root artifacts
+ * listed in NPM_WIPE_TARGETS (node_modules AND the lockfile/manifest — see
+ * below) so transitive deps re-resolve from scratch and can downgrade.
+ *
+ * The no-record case wipes too because "no record" does NOT imply "clean
+ * tree": a volume whose record was lost (old-scope install the path probe
+ * misses, corrupted openclaw.json, partial prior failure) still carries the
+ * stale lockfile + merged manifest + node_modules, and a plain install on that
+ * tree is exactly the lockfile-re-pin failure mode this module exists to
+ * prevent. Worse, with no record the nonce comparison can never force, so the
+ * fleet nonce lever could not heal such a volume. On a genuinely fresh volume
+ * the wipe is rmSync({force: true}) on nonexistent paths — a free no-op.
  *
  * @typedef {Object} InstallRecord
  * @property {boolean} exists  Whether cfg.plugins.installs["runtime"] is present.
@@ -36,7 +43,7 @@
  * @property {string} [nonce]  Configured SENPI_RUNTIME_REINSTALL_NONCE.
  *
  * @typedef {Object} InstallDecision
- * @property {"none"|"install"|"wipeAndInstall"} action
+ * @property {"none"|"wipeAndInstall"} action
  * @property {string} reason   Human-readable, safe to log.
  */
 
@@ -109,12 +116,18 @@ export function decideRuntimeInstall({ record, env } = {}) {
   // was written no-ops).
   const nonceForces = configuredNonce !== "" && configuredNonce !== recordedNonce;
 
-  // No recorded install: fresh volume, or a scope change whose record was lost.
-  // Nothing on the tree to wipe — install cleanly.
+  // No recorded install. "No record" does NOT imply "clean tree" — a dirty
+  // volume that lost its record (old-scope install the path probe misses,
+  // corrupted openclaw.json, partial prior failure) still carries the stale
+  // lockfile/manifest/node_modules, and with no record the nonce lever can
+  // never force a heal. Wipe to guarantee a clean tree; on genuinely fresh
+  // volumes the rm is force:true on nonexistent paths — a free no-op.
   if (!record || !record.exists) {
     return {
-      action: "install",
-      reason: "no install record (fresh volume or missing record)",
+      action: "wipeAndInstall",
+      reason:
+        "no install record — wiping managed npm root to guarantee a clean tree " +
+        "(no-op on fresh volumes)",
     };
   }
 

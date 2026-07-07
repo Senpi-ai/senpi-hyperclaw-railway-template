@@ -4,7 +4,8 @@
  *
  * Non-negotiable coverage given the "scope mismatch ⇒ wipe on every boot"
  * failure mode (§4.2) and the transitive-dep incident (§2):
- *   - fresh volume (no record)         → install
+ *   - no record (fresh OR dirty volume) → wipeAndInstall (free no-op on a
+ *     fresh volume; guarantees a clean tree on a dirty one that lost its record)
  *   - same spec + same nonce           → none (no-op)
  *   - spec change                      → wipeAndInstall
  *   - nonce set for the first time     → wipeAndInstall
@@ -26,19 +27,36 @@ import {
 
 const SPEC = "@senpi-ai/runtime";
 
-test("fresh volume (no record) → install, no wipe", () => {
+test("fresh volume (no record) → wipeAndInstall (wipe is a free no-op on an empty tree)", () => {
   const d = decideRuntimeInstall({
     record: { exists: false },
     env: { spec: SPEC },
   });
-  assert.equal(d.action, "install");
+  assert.equal(d.action, "wipeAndInstall");
   assert.match(d.reason, /no install record/);
 });
 
-test("null / undefined record → install", () => {
+test("dirty volume with lost record → wipeAndInstall (never trust the tree without a record)", () => {
+  // "No record" does NOT imply "clean tree": an old-scope install the path
+  // probe misses, a corrupted openclaw.json, or a partial prior failure all
+  // leave the stale lockfile/manifest/node_modules behind with no record. A
+  // plain install on that tree is the lockfile-re-pin failure mode, and with
+  // no record the nonce comparison could never force a heal — so the decision
+  // must wipe regardless of any configured nonce.
+  for (const envNonce of [undefined, "", "2026-07-depfix"]) {
+    const d = decideRuntimeInstall({
+      record: { exists: false },
+      env: { spec: SPEC, nonce: envNonce },
+    });
+    assert.equal(d.action, "wipeAndInstall", `envNonce=${JSON.stringify(envNonce)}`);
+    assert.match(d.reason, /no install record/);
+  }
+});
+
+test("null / undefined record → wipeAndInstall", () => {
   for (const record of [null, undefined]) {
     const d = decideRuntimeInstall({ record, env: { spec: SPEC } });
-    assert.equal(d.action, "install", `record=${JSON.stringify(record)}`);
+    assert.equal(d.action, "wipeAndInstall", `record=${JSON.stringify(record)}`);
   }
 });
 

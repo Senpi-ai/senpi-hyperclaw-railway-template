@@ -533,59 +533,59 @@ function installSenpiRuntimePluginIfNeeded() {
     return;
   }
 
-  if (decision.action === "wipeAndInstall") {
-    // Remove the managed npm root artifacts (NPM_WIPE_TARGETS: node_modules,
-    // package-lock.json, package.json) — not just the plugin dir — so hoisted
-    // transitive deps re-resolve from scratch and can downgrade (the motivating
-    // incident, spec §2: npm never proactively downgrades a surviving dep that
-    // still satisfies a semver range). Wiping node_modules ALONE is not enough:
-    // `openclaw plugins install` runs plain `npm install` in STATE_DIR/npm with
-    // the lockfile honored (openclaw v2026.5.7 src/plugins/install.ts:1375-1398,
-    // packageLock: true → npm_config_package_lock=true in
-    // src/infra/safe-package-install.ts), so a surviving package-lock.json
-    // re-pins the exact stale tree; and the managed package.json merges
-    // dependencies on upsert (src/infra/npm-managed-root.ts:184-224), so a
-    // stale old-scope entry would be reinstalled alongside the new one.
-    // OpenClaw regenerates all three on install — see NPM_WIPE_TARGETS docs.
-    // Name-agnostic, so it also cleans up any stale install left under a
-    // different scope.
-    //
-    // Scope safety: every wipe target lives directly under STATE_DIR/npm. User
-    // strategies (STATE_DIR/senpi-state/), sessions (STATE_DIR/agents/), the
-    // workspace (/data/workspace), and device pairing state are all SIBLINGS
-    // of npm/, never under it — the rm paths cannot reach them. Assert before rm.
-    const npmDir = path.join(STATE_DIR, "npm");
-    const wipePaths = NPM_WIPE_TARGETS.map((name) => path.join(npmDir, name));
-    const badPath = wipePaths.find(
-      (p) => path.relative(STATE_DIR, p) !== path.join("npm", path.basename(p))
+  // decision.action === "wipeAndInstall" (the only other action — a missing
+  // install record wipes too, since "no record" does not imply "clean tree";
+  // on fresh volumes the rm below is force:true on nonexistent paths, a no-op).
+  //
+  // Remove the managed npm root artifacts (NPM_WIPE_TARGETS: node_modules,
+  // package-lock.json, package.json) — not just the plugin dir — so hoisted
+  // transitive deps re-resolve from scratch and can downgrade (the motivating
+  // incident, spec §2: npm never proactively downgrades a surviving dep that
+  // still satisfies a semver range). Wiping node_modules ALONE is not enough:
+  // `openclaw plugins install` runs plain `npm install` in STATE_DIR/npm with
+  // the lockfile honored (openclaw v2026.5.7 src/plugins/install.ts:1375-1398,
+  // packageLock: true → npm_config_package_lock=true in
+  // src/infra/safe-package-install.ts), so a surviving package-lock.json
+  // re-pins the exact stale tree; and the managed package.json merges
+  // dependencies on upsert (src/infra/npm-managed-root.ts:184-224), so a
+  // stale old-scope entry would be reinstalled alongside the new one.
+  // OpenClaw regenerates all three on install — see NPM_WIPE_TARGETS docs.
+  // Name-agnostic, so it also cleans up any stale install left under a
+  // different scope.
+  //
+  // Scope safety: every wipe target lives directly under STATE_DIR/npm. User
+  // strategies (STATE_DIR/senpi-state/), sessions (STATE_DIR/agents/), the
+  // workspace (/data/workspace), and device pairing state are all SIBLINGS
+  // of npm/, never under it — the rm paths cannot reach them. Assert before rm.
+  const npmDir = path.join(STATE_DIR, "npm");
+  const wipePaths = NPM_WIPE_TARGETS.map((name) => path.join(npmDir, name));
+  const badPath = wipePaths.find(
+    (p) => path.relative(STATE_DIR, p) !== path.join("npm", path.basename(p))
+  );
+  if (badPath) {
+    // Defensive: never rm anything outside STATE_DIR/npm/<target>.
+    console.error(
+      `[bootstrap] refusing to wipe unexpected path ${badPath}; skipping reinstall`
     );
-    if (badPath) {
-      // Defensive: never rm anything outside STATE_DIR/npm/<target>.
-      console.error(
-        `[bootstrap] refusing to wipe unexpected path ${badPath}; skipping reinstall`
-      );
-      return;
+    return;
+  }
+  console.log(
+    `[bootstrap] runtime reinstall triggered (${decision.reason}); ` +
+    `wiping managed npm root artifacts under ${npmDir}: ${NPM_WIPE_TARGETS.join(", ")} ` +
+    `(preserved: senpi-state/ strategies, agents/ sessions, workspace, device pairing)`
+  );
+  for (const target of wipePaths) {
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`[bootstrap] failed to remove ${target}:`, err?.message ?? err);
     }
-    console.log(
-      `[bootstrap] runtime reinstall triggered (${decision.reason}); ` +
-      `wiping managed npm root artifacts under ${npmDir}: ${NPM_WIPE_TARGETS.join(", ")} ` +
-      `(preserved: senpi-state/ strategies, agents/ sessions, workspace, device pairing)`
-    );
-    for (const target of wipePaths) {
-      try {
-        fs.rmSync(target, { recursive: true, force: true });
-      } catch (err) {
-        console.error(`[bootstrap] failed to remove ${target}:`, err?.message ?? err);
-      }
-    }
-    // Drop the install record so a partial/failed install can't leave a stale
-    // spec/nonce recorded; it is rewritten after a successful install below.
-    if (cfg.plugins?.installs) {
-      delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
-      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-    }
-  } else {
-    console.log(`[bootstrap] runtime install (${decision.reason})`);
+  }
+  // Drop the install record so a partial/failed install can't leave a stale
+  // spec/nonce recorded; it is rewritten after a successful install below.
+  if (cfg.plugins?.installs?.[SENPI_RUNTIME_PLUGIN_ID]) {
+    delete cfg.plugins.installs[SENPI_RUNTIME_PLUGIN_ID];
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
   }
 
   ensureDir(path.join(STATE_DIR, "extensions"));
