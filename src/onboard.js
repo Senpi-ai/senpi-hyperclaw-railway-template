@@ -490,6 +490,14 @@ console.log(`[auto-onboard] directory created`);
       ])
     );
 
+    const reloadCfg = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    if (!reloadCfg?.gateway?.reload?.mode) {
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "gateway.reload.mode", JSON.stringify("restart")])
+      );
+    }
+
     if (TELEGRAM_BOT_TOKEN) {
       console.log("[auto-onboard] Configuring Telegram channel...");
       const channelsHelp = await runCmd(

@@ -241,6 +241,14 @@ export async function startGateway(gatewayToken) {
     );
   }
 
+  if (!verify?.gateway?.reload?.mode) {
+    await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "--json", "gateway.reload.mode", JSON.stringify("restart")])
+    );
+    console.log("[gateway] Set gateway.reload.mode=restart (default)");
+  }
+
   const args = [
     "gateway",
     "run",
