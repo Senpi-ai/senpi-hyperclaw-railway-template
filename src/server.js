@@ -37,6 +37,7 @@ import {
   attachUpgrade,
 } from "./routes/proxy.js";
 
+
 if (!SETUP_PASSWORD) {
   console.error("================================================================");
   console.error("WARNING: SETUP_PASSWORD is not configured.");
@@ -51,10 +52,14 @@ process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 
 const app = express();
 app.disable("x-powered-by");
-app.use(express.json({ limit: "1mb" }));
+
+// Only parse JSON for routes that need it (setup, internal APIs).
+// Do NOT apply globally — it consumes the body stream, breaking http-proxy
+// for POST/PUT requests forwarded to the gateway.
+const jsonParser = express.json({ limit: "1mb" });
 
 // Setup wizard and API
-app.use("/setup", createSetupRouter());
+app.use("/setup", jsonParser, createSetupRouter());
 
 // Control UI (/, /openclaw) — intercept HTML and inject token script
 app.get(
