@@ -1,4 +1,12 @@
-# Openclaw Railway Template (1‑click deploy) [DEPRECATED, use senpi platform to launch agent]
+# Senpi HyperClaw Railway template (deprecated)
+
+**This template is deprecated and no longer maintained. To run a Senpi AI trading agent for Hyperliquid, launch one at [senpi.ai](https://senpi.ai): it sets up the agent host, the Senpi runtime and the Senpi tools for you, with nothing to self-host.** Senpi's open-source agent skills and strategy templates are in [Senpi-ai/senpi-skills](https://github.com/Senpi-ai/senpi-skills).
+
+The original instructions are below for reference only.
+
+---
+
+## Openclaw Railway Template (1-click deploy)
 
 This repo packages **Openclaw** for Railway with **zero-touch auto-configuration**. Set your environment variables, deploy, and your bot is ready — no manual setup required.
 
